@@ -1,0 +1,26 @@
+*.gem
+*.rbc
+.bundle
+.config
+.ruby-gemset
+.yardoc
+Gemfile.lock.bak
+InstalledFiles
+_yardoc
+coverage
+doc/
+log/*.log
+pkg
+rdoc
+spec/dummy/log
+spec/dummy/tmp
+spec/reports
+test/tmp
+test/version_tmp
+tmp
+
+# Sorbet generated RBIs — committed on a separate flow via /publish-gem.
+# Local tapioca runs may leave staged files; we keep them out of bulk commits
+# until the publish workflow regenerates and commits them deliberately.
+# (Mirrors standard_audit / standard_id convention.)
+sorbet/rbi/gems/*.rbi

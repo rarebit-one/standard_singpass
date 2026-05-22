@@ -1,0 +1,250 @@
+{
+  "default": {
+    "name": { "value": "TAN AH KOW" },
+    "uinfin": { "value": "S9812345A" },
+    "aliasname": { "value": "JOHN TAN" },
+    "dob": { "value": "1998-03-15" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "CN", "desc": "CHINESE" },
+    "nationality": { "code": "SG", "desc": "SINGAPORE CITIZEN" },
+    "residentialstatus": { "code": "C", "desc": "CITIZEN" },
+    "marital": { "code": "2", "desc": "MARRIED" },
+    "edulevel": { "code": "7", "desc": "BACHELOR'S OR EQUIVALENT" },
+    "email": { "value": "ahkow@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "91234567" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "123" },
+      "street": { "value": "BEDOK NORTH AVE 1" },
+      "floor": { "value": "05" },
+      "unit": { "value": "123" },
+      "postal": { "value": "460123" },
+      "country": { "code": "SG" }
+    },
+    "hdbtype": { "code": "112", "desc": "4-ROOM FLAT" },
+    "housingtype": { "code": "HDB", "desc": "HDB" },
+    "employment": { "value": "EMPLOYED" },
+    "occupation": { "code": "5223", "desc": "SALES SUPERVISOR" },
+    "ownerprivate": { "value": "N" },
+    "cpfbalances": {
+      "oa": { "value": "12500.00" }
+    },
+    "cpfcontributions": {
+      "history": [
+        { "employer": { "value": "ACME PTE LTD" }, "month": { "value": "2026-04" }, "amount": { "value": "1850.00" }, "date": { "value": "2026-04-15" } },
+        { "employer": { "value": "ACME PTE LTD" }, "month": { "value": "2026-03" }, "amount": { "value": "1850.00" }, "date": { "value": "2026-03-15" } }
+      ]
+    },
+    "cpfemployers": {
+      "history": [
+        { "employer": { "value": "ACME PTE LTD" }, "month": { "value": "2026-04" } }
+      ]
+    },
+    "noa-basic": {
+      "yearofassessment": { "value": "2025" },
+      "amount": { "value": "75000.00" }
+    },
+    "noahistory-basic": {
+      "noas": [
+        { "yearofassessment": { "value": "2024" }, "amount": { "value": "70000.00" } },
+        { "yearofassessment": { "value": "2023" }, "amount": { "value": "65000.00" } }
+      ]
+    },
+    "hdbownership": [
+      {
+        "noofowners": { "value": "2" },
+        "address": {
+          "block": { "value": "123" },
+          "street": { "value": "BEDOK NORTH AVE 1" },
+          "floor": { "value": "05" },
+          "unit": { "value": "123" },
+          "postal": { "value": "460123" },
+          "country": { "code": "SG" }
+        },
+        "hdbtype": { "code": "112" },
+        "loangranted": { "value": "300000" },
+        "balanceloanrepayment": { "value": "15" },
+        "outstandingloanbalance": { "value": "240000" },
+        "monthlyloaninstalment": { "value": "1800" },
+        "outstandinginstalment": { "value": "1800" }
+      }
+    ],
+    "vehicles": [
+      { "effectiveownership": { "value": "2024-06-15T00:00:00" } }
+    ]
+  },
+
+  "self_employed": {
+    "name": { "value": "LIM MEI LING" },
+    "uinfin": { "value": "S8567890B" },
+    "dob": { "value": "1985-11-22" },
+    "sex": { "code": "F", "desc": "FEMALE" },
+    "race": { "code": "CN", "desc": "CHINESE" },
+    "nationality": { "code": "SG", "desc": "SINGAPORE CITIZEN" },
+    "residentialstatus": { "code": "C", "desc": "CITIZEN" },
+    "marital": { "code": "1", "desc": "SINGLE" },
+    "edulevel": { "code": "5", "desc": "DIPLOMA OR EQUIVALENT" },
+    "email": { "value": "meiling@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "98765432" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "456" },
+      "street": { "value": "TAMPINES ST 21" },
+      "floor": { "value": "12" },
+      "unit": { "value": "456" },
+      "postal": { "value": "520456" },
+      "country": { "code": "SG" }
+    },
+    "employment": { "value": "SELF-EMPLOYED" }
+  },
+
+  "tamil_name": {
+    "name": { "value": "RAJ KUMAR S/O THIAGARAJAN" },
+    "uinfin": { "value": "S7234567C" },
+    "dob": { "value": "1972-06-08" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "IN", "desc": "INDIAN" },
+    "nationality": { "code": "SG", "desc": "SINGAPORE CITIZEN" },
+    "residentialstatus": { "code": "C", "desc": "CITIZEN" },
+    "marital": { "code": "2", "desc": "MARRIED" },
+    "edulevel": { "code": "8", "desc": "MASTER'S OR EQUIVALENT" },
+    "email": { "value": "rajkumar@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "92223344" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "789" },
+      "street": { "value": "SERANGOON GARDEN WAY" },
+      "floor": { "value": "03" },
+      "unit": { "value": "07" },
+      "postal": { "value": "555789" },
+      "country": { "code": "SG" }
+    },
+    "employment": { "value": "EMPLOYED" }
+  },
+
+  "permanent_resident": {
+    "name": { "value": "KIM SOO YOUNG" },
+    "uinfin": { "value": "G6543210D" },
+    "dob": { "value": "1990-09-03" },
+    "sex": { "code": "F", "desc": "FEMALE" },
+    "race": { "code": "OT", "desc": "OTHERS" },
+    "nationality": { "code": "KR", "desc": "KOREAN" },
+    "residentialstatus": { "code": "P", "desc": "PERMANENT RESIDENT" },
+    "marital": { "code": "1", "desc": "SINGLE" },
+    "edulevel": { "code": "8", "desc": "MASTER'S OR EQUIVALENT" },
+    "email": { "value": "sooyoung.kim@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "94445566" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "21" },
+      "street": { "value": "SCOTTS ROAD" },
+      "floor": { "value": "18" },
+      "unit": { "value": "1801" },
+      "postal": { "value": "228221" },
+      "country": { "code": "SG" }
+    },
+    "employment": { "value": "EMPLOYED" }
+  },
+
+  "sparse_data": {
+    "name": { "value": "TAN BOON HUAT" },
+    "uinfin": { "value": "S5078901E" },
+    "dob": { "value": "1950-12-19" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "CN", "desc": "CHINESE" },
+    "nationality": { "code": "SG", "desc": "SINGAPORE CITIZEN" },
+    "residentialstatus": { "code": "C", "desc": "CITIZEN" },
+    "marital": { "code": "3", "desc": "WIDOWED" },
+    "edulevel": { "code": "1", "desc": "PRIMARY OR LOWER SECONDARY" },
+    "email": { "value": "tan.boon.huat@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "98889999" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "20" },
+      "street": { "value": "TOA PAYOH LOR 4" },
+      "postal": { "value": "310020" },
+      "country": { "code": "SG" }
+    },
+    "employment": {}
+  },
+
+  "fin_holder": {
+    "name": { "value": "RAJESH KUMAR" },
+    "uinfin": { "value": "G7890123H" },
+    "dob": { "value": "1988-08-12" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "IN", "desc": "INDIAN" },
+    "nationality": { "code": "IN", "desc": "INDIAN" },
+    "residentialstatus": { "code": "F", "desc": "FOREIGNER" },
+    "passtype": { "code": "EP", "desc": "EMPLOYMENT PASS" },
+    "passstatus": { "code": "LIVE", "desc": "LIVE" },
+    "passexpirydate": { "value": "2027-08-31" },
+    "employmentsector": { "code": "FINANCIAL_SERVICES", "desc": "FINANCIAL SERVICES" },
+    "employment": { "value": "GLOBAL FINANCE PTE LTD" },
+    "occupation": { "code": "2411", "desc": "ACCOUNTANT" },
+    "marital": { "code": "1", "desc": "SINGLE" },
+    "email": { "value": "rajesh.kumar@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "96667788" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "55" },
+      "street": { "value": "BENCOOLEN STREET" },
+      "floor": { "value": "08" },
+      "unit": { "value": "12" },
+      "postal": { "value": "189627" },
+      "country": { "code": "SG" }
+    }
+  },
+
+  "error_paths": {
+    "name": { "value": "ONG WEI MING" },
+    "uinfin": { "value": "S8345678F" },
+    "dob": { "value": "1983-04-27" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "CN", "desc": "CHINESE" },
+    "nationality": { "code": "SG", "desc": "SINGAPORE CITIZEN" },
+    "residentialstatus": { "code": "C", "desc": "CITIZEN" },
+    "marital": { "code": "1", "desc": "SINGLE" },
+    "edulevel": { "code": "7", "desc": "BACHELOR'S OR EQUIVALENT" },
+    "email": { "value": "weiming.ong@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "93334455" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "88" },
+      "street": { "value": "QUEENSWAY" },
+      "floor": { "value": "10" },
+      "unit": { "value": "1010" },
+      "postal": { "value": "149053" },
+      "country": { "code": "SG" }
+    },
+    "employment": { "value": "EMPLOYED" }
+  }
+}
