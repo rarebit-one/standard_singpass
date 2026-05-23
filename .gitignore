@@ -19,8 +19,10 @@ test/tmp
 test/version_tmp
 tmp
 
-# Sorbet generated RBIs — committed on a separate flow via /publish-gem.
-# Local tapioca runs may leave staged files; we keep them out of bulk commits
-# until the publish workflow regenerates and commits them deliberately.
-# (Mirrors standard_audit / standard_id convention.)
-sorbet/rbi/gems/*.rbi
+# Sorbet RBIs ARE committed (sorbet/rbi/gems/, sorbet/rbi/annotations/,
+# sorbet/rbi/dsl/) so `bundle exec srb tc` is deterministic in CI without
+# regenerating from the network. Use `bundle exec tapioca gems` after a
+# bundle update to refresh them.
+
+# Tapioca scratch state — never commit.
+sorbet/rbi/todo.rbi

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `rails generate standard_singpass:install` scaffolds `config/initializers/standard_singpass.rb` with the full configuration surface commented out. Idempotent; `--force` overwrites.
+- Full-flow integration spec at `spec/standard_singpass/myinfo/full_flow_spec.rb` exercising PAR → token exchange → userinfo → JWE decrypt → JWS validate → parse end to end (with key-mismatch, nonce-mismatch error coverage).
+- `spec/standard_singpass/myinfo/configuration_spec.rb` covering the global `configure` / `public_jwks` paths and the private-JWKS parser (happy path, malformed JSON, public-only-key rejection).
+- `AGENTS.md` — quick-reference doc for AI agents and human contributors. Public surface, error taxonomy, key workflows.
+- Sorbet wired end to end: `bin/tapioca` shim, generated RBIs for runtime deps under `sorbet/rbi/gems/`, hand-edited shims for `OpenSSL::PKey::EC::Point#to_octet_string` and `Faraday.get`, and `.github/workflows/typecheck.yml` running `bundle exec srb tc` on every PR.
+- Productivity workflows: `.github/workflows/{claude.yml,claude-code-review.yml,weekly-maintenance.yml}` + `.github/dependabot.yml` (matches peer `standard_*` gem setup).
+
+### Changed
+
+- Coverage floor tightened from 85% line / 75% branch to 90% line / 75% branch (now sitting at 95% / 84%).
+- `lib/standard_singpass/engine.rb` defers its `Rails::Engine` definition behind `if defined?(::Rails::Engine)` so the gem loads cleanly under `tapioca gems` and other no-Rails contexts.
+- `Gemfile` lists `gem "rails"` ahead of `gemspec` to guarantee Rails loads first under `Bundler.require`, which other gems (rspec-rails, our engine) assume.
+
 ## [0.1.0] - 2026-05-23
 
 ### Added
