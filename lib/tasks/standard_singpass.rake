@@ -13,7 +13,7 @@
 namespace :standard_singpass do
   namespace :myinfo do
     desc "Generate a fresh MyInfo private JWKS (sig + enc, EC P-256). JSON to stdout, narrative to stderr."
-    task :generate_jwks, [ :sig_kid, :enc_kid ] => :environment do |_, args|
+    task :generate_jwks, [:sig_kid, :enc_kid] => :environment do |_, args|
       sig_kid = args[:sig_kid].presence || "singpass-sig-#{Date.current.strftime('%Y%m%d')}"
       enc_kid = args[:enc_kid].presence || "singpass-enc-#{Date.current.strftime('%Y%m%d')}"
 
@@ -39,7 +39,7 @@ namespace :standard_singpass do
     end
 
     desc "Validate a MyInfo private JWKS payload. Catches the public-only-key trap before paste."
-    task :validate_jwks, [ :path ] => :environment do |_, args|
+    task :validate_jwks, [:path] => :environment do |_, args|
       raw = if args[:path].present?
         File.read(args[:path])
       elsif !$stdin.tty?

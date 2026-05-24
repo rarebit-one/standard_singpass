@@ -158,15 +158,15 @@ module StandardSingpass
         # NIST Concat KDF (single-pass, SHA-256) per RFC 7518 Section 4.6.2
         sig { params(shared_secret: String, algorithm: String, key_length: Integer, apu: T.nilable(String), apv: T.nilable(String)).returns(String) }
         def concat_kdf(shared_secret, algorithm, key_length, apu: nil, apv: nil)
-          algorithm_id = [ algorithm.bytesize ].pack("N") + algorithm
-          party_u_info = apu ? [ apu.bytesize ].pack("N") + apu : [ 0 ].pack("N")
-          party_v_info = apv ? [ apv.bytesize ].pack("N") + apv : [ 0 ].pack("N")
-          supp_pub_info = [ key_length * 8 ].pack("N")
+          algorithm_id = [algorithm.bytesize].pack("N") + algorithm
+          party_u_info = apu ? [apu.bytesize].pack("N") + apu : [0].pack("N")
+          party_v_info = apv ? [apv.bytesize].pack("N") + apv : [0].pack("N")
+          supp_pub_info = [key_length * 8].pack("N")
 
           other_info = algorithm_id + party_u_info + party_v_info + supp_pub_info
 
           # Single round (SHA-256 output is 32 bytes, enough for up to 256-bit keys)
-          round_input = [ 1 ].pack("N") + shared_secret + other_info
+          round_input = [1].pack("N") + shared_secret + other_info
           digest = OpenSSL::Digest::SHA256.digest(round_input)
           digest[0, key_length]
         end
@@ -223,10 +223,10 @@ module StandardSingpass
           point = OpenSSL::PKey::EC::Point.new(group, OpenSSL::BN.new(point_hex, 16))
 
           # Build a public-only EC key
-          inner = [ OpenSSL::ASN1::ObjectId.new("id-ecPublicKey"),
-                    OpenSSL::ASN1::ObjectId.new(curve_name) ]
-          outer = [ OpenSSL::ASN1::Sequence.new(inner),
-                    OpenSSL::ASN1::BitString.new(point.to_octet_string(:uncompressed)) ]
+          inner = [OpenSSL::ASN1::ObjectId.new("id-ecPublicKey"),
+                    OpenSSL::ASN1::ObjectId.new(curve_name)]
+          outer = [OpenSSL::ASN1::Sequence.new(inner),
+                    OpenSSL::ASN1::BitString.new(point.to_octet_string(:uncompressed))]
           asn1 = OpenSSL::ASN1::Sequence.new(outer)
           OpenSSL::PKey::EC.new(asn1.to_der)
         end
@@ -279,7 +279,7 @@ module StandardSingpass
           cipher.auth_data = aad
           ciphertext = cipher.update(plaintext) + cipher.final
           auth_tag = cipher.auth_tag
-          [ iv, ciphertext, auth_tag ]
+          [iv, ciphertext, auth_tag]
         end
 
         sig { params(cek: String, ciphertext: String, iv: String, auth_tag: String, aad: String, enc: String).returns(String) }
@@ -310,13 +310,13 @@ module StandardSingpass
           ciphertext = cipher.update(plaintext) + cipher.final
 
           # Compute authentication tag (HMAC over AAD || IV || ciphertext || AL)
-          al = [ aad.bytesize * 8 ].pack("Q>")
+          al = [aad.bytesize * 8].pack("Q>")
           hmac_input = aad + iv + ciphertext + al
           hmac = OpenSSL::HMAC.digest(cbc_hmac_digest(enc), T.must(mac_key), hmac_input)
           tag_len = mac_key_len  # half of HMAC output
           auth_tag = hmac[0, tag_len]
 
-          [ iv, ciphertext, auth_tag ]
+          [iv, ciphertext, auth_tag]
         end
 
         sig { params(cek: String, ciphertext: String, iv: String, auth_tag: String, aad: String, enc: String).returns(String) }
@@ -326,7 +326,7 @@ module StandardSingpass
           enc_key = cek[mac_key_len, mac_key_len]
 
           # Verify authentication tag
-          al = [ aad.bytesize * 8 ].pack("Q>")
+          al = [aad.bytesize * 8].pack("Q>")
           hmac_input = aad + iv + ciphertext + al
           hmac = OpenSSL::HMAC.digest(cbc_hmac_digest(enc), T.must(mac_key), hmac_input)
           tag_len = mac_key_len

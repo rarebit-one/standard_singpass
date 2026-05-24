@@ -280,7 +280,7 @@ RSpec.describe StandardSingpass::Myinfo::PersonDataParser do
           }
           result = described_class.call(data)
 
-          expect(result[:cpf_employers]).to eq([ { name: "ACME", month: "2026-04" } ])
+          expect(result[:cpf_employers]).to eq([{ name: "ACME", month: "2026-04" }])
         end
       end
 

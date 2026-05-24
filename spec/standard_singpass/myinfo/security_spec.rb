@@ -105,7 +105,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       header = JWT.decode(proof, nil, false).last
       jwk = JWT::JWK.new(header["jwk"])
 
-      expect { JWT.decode(proof, jwk.keypair, true, algorithms: [ "ES256" ]) }.not_to raise_error
+      expect { JWT.decode(proof, jwk.keypair, true, algorithms: ["ES256"]) }.not_to raise_error
     end
 
     it "strips query string and fragment from htu" do
@@ -176,7 +176,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       )
 
       expect {
-        JWT.decode(assertion, signing_key, true, algorithms: [ "ES256" ])
+        JWT.decode(assertion, signing_key, true, algorithms: ["ES256"])
       }.not_to raise_error
     end
 
@@ -245,7 +245,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       result = described_class.decrypt_jwe(
         jwe_string,
-        private_keys: [ { kid: "key-1", key: ec_key_1 } ]
+        private_keys: [{ kid: "key-1", key: ec_key_1 }]
       )
       expect(result).to eq(payload)
     end
@@ -269,7 +269,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       expect {
         described_class.decrypt_jwe(
           jwe_string,
-          private_keys: [ { kid: "key-1", key: ec_key_1 } ]
+          private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
       }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError, /No matching decryption key found/)
     end
@@ -280,7 +280,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       expect {
         described_class.decrypt_jwe(
           jwe_string,
-          private_keys: [ { kid: "key-2", key: ec_key_2 } ]
+          private_keys: [{ kid: "key-2", key: ec_key_2 }]
         )
       }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError)
     end
@@ -290,7 +290,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       result = described_class.decrypt_jwe(
         jwe_string,
-        private_keys: [ { kid: "key-1", key: ec_key_1.to_pem } ]
+        private_keys: [{ kid: "key-1", key: ec_key_1.to_pem }]
       )
       expect(result).to eq(payload)
     end
@@ -299,7 +299,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       expect {
         described_class.decrypt_jwe(
           "not.a.valid.jwe.string",
-          private_keys: [ { kid: "key-1", key: ec_key_1 } ]
+          private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
       }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError)
     end
@@ -311,7 +311,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       expect {
         described_class.decrypt_jwe(
           jwe_string,
-          private_keys: [ { kid: "key-1", key: ec_key_1 } ]
+          private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
       }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError, /JWE header missing kid field/)
     end
@@ -323,7 +323,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       expect {
         described_class.decrypt_jwe(
           jwe_string,
-          private_keys: [ { kid: "key-1", key: ec_key_1 } ]
+          private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
       }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError, /Unsupported JWE alg.*FAPI 2\.0 requires/)
     end
@@ -337,7 +337,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
     let(:jwks_json) do
       jwk = JWT::JWK.new(ec_key, kid:)
-      { "keys" => [ jwk.export.merge("alg" => "ES256") ] }.to_json
+      { "keys" => [jwk.export.merge("alg" => "ES256")] }.to_json
     end
 
     def sign_jws(payload, key, kid)
@@ -433,7 +433,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       let(:old_jwks_json) do
         jwk = JWT::JWK.new(old_key, kid:)
-        { "keys" => [ jwk.export.merge("alg" => "ES256") ] }.to_json
+        { "keys" => [jwk.export.merge("alg" => "ES256")] }.to_json
       end
 
       it "retries with fresh JWKS on signature verification failure" do
@@ -500,7 +500,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       let(:jwks_without_alg) do
         jwk = JWT::JWK.new(ec_key_no_alg, kid: ec_kid)
-        { "keys" => [ jwk.export ] }.to_json
+        { "keys" => [jwk.export] }.to_json
       end
 
       before do
@@ -523,7 +523,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       let(:rsa_jwks_json) do
         jwk = JWT::JWK.new(rsa_key, kid: rsa_kid)
-        { "keys" => [ jwk.export.merge("alg" => "RS256") ] }.to_json
+        { "keys" => [jwk.export.merge("alg" => "RS256")] }.to_json
       end
 
       before do
