@@ -19,5 +19,6 @@ jobs:
         bundle exec rubocop
       test-commands: |
         bundle exec rspec
+        bundle exec srb tc
     secrets:
       claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

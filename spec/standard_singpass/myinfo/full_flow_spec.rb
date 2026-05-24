@@ -218,4 +218,45 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
       )
     }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /nonce does not match/)
   end
+
+  it "raises AuthenticationError when the id_token acr is below the configured minimum_acr" do
+    # New client wired with a LOA-3 floor — Singpass's `acr` URN format is
+    # `urn:singpass:authentication:loa:N`, with N restricted to 2 or 3.
+    acr_locked_client = StandardSingpass::Myinfo::Client.new(
+      client_config.merge(minimum_acr: "urn:singpass:authentication:loa:3")
+    )
+
+    id_token_payload = {
+      "iss"   => issuer,
+      "aud"   => client_id,
+      "sub"   => "singpass-sub-123",
+      "iat"   => Time.now.to_i,
+      "exp"   => (Time.now + 5.minutes).to_i,
+      "nonce" => nonce,
+      "acr"   => "urn:singpass:authentication:loa:2" # below the configured loa:3 floor
+    }
+    id_token_jws = JWT.encode(id_token_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
+    id_token_jwe = StandardSingpass::Myinfo::EcdhJwe.encrypt(
+      id_token_jws,
+      public_key: client_encryption_key,
+      alg:        "ECDH-ES+A256KW",
+      enc:        "A256GCM",
+      kid:        client_encryption_kid
+    )
+
+    stub_request(:post, token_url).to_return(
+      status:  200,
+      body:    { access_token: "tok", id_token: id_token_jwe }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+
+    expect {
+      acr_locked_client.get_person_data(
+        auth_code: "code",
+        code_verifier: pkce[:code_verifier],
+        dpop_key_pair: dpop_key_pair,
+        nonce: nonce
+      )
+    }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /below required minimum/)
+  end
 end

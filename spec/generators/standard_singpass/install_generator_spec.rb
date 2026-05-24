@@ -21,7 +21,8 @@ RSpec.describe StandardSingpass::Generators::InstallGenerator, type: :generator 
   end
 
   it "writes the initializer" do
-    run_generator
+    expect { run_generator }.to output(/create.+standard_singpass\.rb/).to_stdout
+
     expect(File).to exist(initializer_path)
     content = File.read(initializer_path)
     expect(content).to include("StandardSingpass::Myinfo.configure")
@@ -34,7 +35,7 @@ RSpec.describe StandardSingpass::Generators::InstallGenerator, type: :generator 
     original = File.read(initializer_path)
     File.write(initializer_path, "# user edits\n")
 
-    capture(:stdout) { run_generator }
+    expect { run_generator }.to output(/identical.+standard_singpass\.rb/).to_stdout
 
     expect(File.read(initializer_path)).to eq("# user edits\n")
     expect(original).not_to eq("# user edits\n")
@@ -44,24 +45,8 @@ RSpec.describe StandardSingpass::Generators::InstallGenerator, type: :generator 
     run_generator
     File.write(initializer_path, "# user edits\n")
 
-    capture(:stdout) { run_generator(["--force"]) }
+    expect { run_generator(["--force"]) }.to output(/force.+standard_singpass\.rb/).to_stdout
 
     expect(File.read(initializer_path)).to include("StandardSingpass::Myinfo.configure")
-  end
-
-  def capture(stream)
-    stream = stream.to_s
-    captured = ""
-    original_stream = $stdout if stream == "stdout"
-    original_stream = $stderr if stream == "stderr"
-    $stdout = StringIO.new if stream == "stdout"
-    $stderr = StringIO.new if stream == "stderr"
-    yield
-    captured = $stdout.string if stream == "stdout"
-    captured = $stderr.string if stream == "stderr"
-    captured
-  ensure
-    $stdout = original_stream if stream == "stdout"
-    $stderr = original_stream if stream == "stderr"
   end
 end
