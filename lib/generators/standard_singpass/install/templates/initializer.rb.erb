@@ -1,0 +1,57 @@
+# StandardSingpass MyInfo configuration.
+#
+# All Singpass FAPI 2.0 flow logic lives in the gem; this file is the
+# host-side adapter that maps environment variables onto the gem's
+# configuration object.
+#
+# Required environment variables:
+#
+#   MYINFO_CLIENT_ID         App ID from the Singpass Developer Portal
+#   MYINFO_REDIRECT_URL      OAuth callback URL (e.g. https://example.com/singpass/callback)
+#   MYINFO_PRIVATE_JWKS      Full JWKS JSON with private signing + encryption keys
+#                            (keys identified by "use": "sig" and "use": "enc")
+#
+# Optional environment variables:
+#
+#   MYINFO_SCOPE             Space-separated scopes (defaults to DEFAULT_SCOPE)
+#   MYINFO_USERINFO_URL      Userinfo endpoint override (rarely needed)
+#   MYINFO_USERINFO_JWKS_URL Userinfo JWKS endpoint override (rarely needed)
+#   MYINFO_MIN_ACR           Required Authentication Context Class Reference
+#                            URN, e.g. urn:singpass:authentication:loa:3
+#   MYINFO_MOCK_MODE         When set, suppresses missing-key warnings and
+#                            unlocks any mock-callback routes the host registers
+
+StandardSingpass::Myinfo.configure do |c|
+  # Endpoint set. :production → live Singpass FAPI; :staging → sandbox.
+  # If RAILS_ENV is "production" on multiple deployment environments
+  # (e.g. staging vs. production share the same RAILS_ENV), key this off
+  # your own environment discriminator rather than Rails.env.
+  c.environment = Rails.env.production? ? :production : :staging
+
+  c.client_id    = ENV["MYINFO_CLIENT_ID"]
+  c.redirect_url = ENV["MYINFO_REDIRECT_URL"]
+
+  c.scope = ENV.fetch("MYINFO_SCOPE", StandardSingpass::Myinfo::Configuration::DEFAULT_SCOPE)
+
+  # Endpoint overrides — only set if you're running against a non-standard
+  # Singpass sandbox or mocked service.
+  c.userinfo_url      = ENV["MYINFO_USERINFO_URL"]      if ENV["MYINFO_USERINFO_URL"].present?
+  c.userinfo_jwks_url = ENV["MYINFO_USERINFO_JWKS_URL"] if ENV["MYINFO_USERINFO_JWKS_URL"].present?
+
+  c.minimum_acr = ENV["MYINFO_MIN_ACR"]
+  c.mock_mode   = ENV["MYINFO_MOCK_MODE"].present?
+
+  # Path to a JSON file of test personas the host can drive mock callbacks
+  # against. Defaults to the gem's bundled fixture set. Override here if you
+  # maintain your own persona file.
+  # c.personas_path = Rails.root.join("e2e/fixtures/myinfo-personas.json")
+
+  # Wrap outbound Faraday calls in a resilience layer (circuit breaker, retry,
+  # tracing). Default is the identity wrapper.
+  # c.network_wrapper = ->(&block) { StandardCircuit.run(:myinfo, &block) }
+
+  # Required: full JWKS JSON containing both sig (ES256) and enc
+  # (ECDH-ES+A256KW) keys with the private scalar `d`. Set last so any
+  # missing-key warnings the gem logs include the rest of the context.
+  c.private_jwks_json = ENV["MYINFO_PRIVATE_JWKS"]
+end

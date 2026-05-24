@@ -2,10 +2,7 @@ require "simplecov"
 SimpleCov.start do
   enable_coverage :branch
   add_filter "/spec/"
-  # Initial extraction baseline; tighten as we add gem-side tests for the
-  # paths the host previously covered indirectly (e.g. Configuration parse
-  # failure branches, public_jwks key-load errors).
-  minimum_coverage line: 85, branch: 75
+  minimum_coverage line: 90, branch: 75
 end
 
 ENV["RAILS_ENV"] ||= "test"

@@ -2,3 +2,5 @@
 .
 --ignore=spec/dummy/
 --ignore=tmp/
+--ignore=vendor/
+--ignore=.worktrees/
