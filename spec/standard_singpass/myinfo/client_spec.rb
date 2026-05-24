@@ -12,7 +12,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       par_url: "https://stg-id.singpass.gov.sg/fapi/par",
       signing_key: "test-signing-key",
       signing_kid: "test-signing-kid",
-      encryption_keys: [ { kid: "test-enc-kid", key: "test-encryption-key" } ],
+      encryption_keys: [{ kid: "test-enc-kid", key: "test-encryption-key" }],
       jwks_url: "https://stg-id.singpass.gov.sg/.well-known/keys",
       userinfo_jwks_url: "https://stg-id.singpass.gov.sg/.well-known/keys",
       issuer: "https://stg-id.singpass.gov.sg/fapi"
@@ -356,7 +356,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:decrypt_jwe)
-        .with("encrypted-userinfo-jwe", private_keys: [ { kid: "test-enc-kid", key: "test-encryption-key" } ])
+        .with("encrypted-userinfo-jwe", private_keys: [{ kid: "test-enc-kid", key: "test-encryption-key" }])
       expect(StandardSingpass::Myinfo::Security).to have_received(:validate_jws)
         .with("userinfo-jws", jwks_url: config[:userinfo_jwks_url])
     end
@@ -365,7 +365,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:decrypt_jwe)
-        .with(id_token, private_keys: [ { kid: "test-enc-kid", key: "test-encryption-key" } ])
+        .with(id_token, private_keys: [{ kid: "test-enc-kid", key: "test-encryption-key" }])
       expect(StandardSingpass::Myinfo::Security).to have_received(:validate_jws)
         .with(decrypted_id_token_jws, jwks_url: config[:jwks_url])
     end
@@ -719,7 +719,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       context "when aud claim is an array containing client_id" do
         before do
           allow(StandardSingpass::Myinfo::Security).to receive(:validate_jws) do |jws, **_kwargs|
-            jws == decrypted_id_token_jws ? id_token_claims.merge("aud" => [ "test-client-id" ]) : person_data
+            jws == decrypted_id_token_jws ? id_token_claims.merge("aud" => ["test-client-id"]) : person_data
           end
         end
 

@@ -126,7 +126,7 @@ RSpec.describe StandardSingpass::Myinfo::JwksGenerator do
     end
 
     it "rejects non-hash entries inside 'keys'" do
-      issues = described_class.validate({ keys: [ "not-a-hash" ] })
+      issues = described_class.validate({ keys: ["not-a-hash"] })
       expect(issues).to include(a_string_matching(/keys\[0\] is not an object/))
     end
   end

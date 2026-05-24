@@ -24,7 +24,7 @@ module StandardSingpass
         sig_jwk = build_jwk(OpenSSL::PKey::EC.generate(EC_OPENSSL_NAME), kid: sig_kid, use: "sig", alg: SIG_ALG)
         enc_jwk = build_jwk(OpenSSL::PKey::EC.generate(EC_OPENSSL_NAME), kid: enc_kid, use: "enc", alg: ENC_ALG)
 
-        jwks = { keys: [ sig_jwk, enc_jwk ] }
+        jwks = { keys: [sig_jwk, enc_jwk] }
 
         # Defensive — the trap this module is built to prevent. If we ever
         # emit a public-only JWK from a generation path, refuse early.
@@ -39,10 +39,10 @@ module StandardSingpass
       # string-keyed; in-memory values from .generate are symbol-keyed).
       sig { params(jwks: T.untyped).returns(T::Array[String]) }
       def self.validate(jwks)
-        return [ "root is not a JSON object (got #{jwks.class})" ] unless jwks.is_a?(Hash)
+        return ["root is not a JSON object (got #{jwks.class})"] unless jwks.is_a?(Hash)
 
         keys = jwks["keys"] || jwks[:keys]
-        return [ "missing 'keys' array" ] unless keys.is_a?(Array)
+        return ["missing 'keys' array"] unless keys.is_a?(Array)
 
         issues = []
 
