@@ -10,6 +10,17 @@ updates:
     # tool_version_not_supported. Restore to 10 once Dependabot supports Ruby 4.0.
     open-pull-requests-limit: 0
     groups:
+      # The sorbet ecosystem version-locks (sorbet, sorbet-runtime,
+      # sorbet-static, tapioca all bump together on each release).
+      # sorbet-runtime is a production dep while sorbet/tapioca are
+      # development deps, so without this group a single sorbet release
+      # produces two overlapping PRs that each burn a full CI run.
+      # This group must come first so it wins over the dependency-type
+      # groups below (Dependabot assigns each gem to the first match).
+      sorbet:
+        patterns:
+          - "sorbet*"
+          - "tapioca"
       development-dependencies:
         dependency-type: "development"
       production-dependencies:
