@@ -16,7 +16,7 @@ Gem::Specification.new do |spec|
   spec.metadata["bug_tracker_uri"] = "https://github.com/rarebit-one/standard_singpass/issues"
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    Dir["{app,config,db,lib,fixtures}/**/*", "MIT-LICENSE", "Rakefile", "README.md", "CHANGELOG.md"]
+    Dir["{app,config,db,lib,fixtures}/**/*", "LICENSE", "Rakefile", "README.md", "CHANGELOG.md"]
   end
 
   spec.required_ruby_version = ">= 4.0"
