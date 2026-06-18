@@ -15,7 +15,7 @@ git worktree add .worktrees/<name> -b <branch-name> "origin/$DEFAULT_BRANCH"
 
 Then work inside `.worktrees/<name>/` for the rest of the session.
 
-**Naming:** Use the Linear issue identifier if available (e.g., `.worktrees/<identifier>`), a task slug (e.g., `.worktrees/fix-auth-timeout`), or today's date (e.g., `.worktrees/2026-04-01`) as fallback.
+**Naming:** Use a task slug (e.g., `.worktrees/fix-auth-timeout`) or today's date (e.g., `.worktrees/2026-04-01`).
 
 See the `/worktree` and `/start` skills for full conventions and flags.
 
