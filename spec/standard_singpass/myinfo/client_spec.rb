@@ -418,6 +418,101 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       end
     end
 
+    # A transient 502 (`upstream_dependency_error`) is Singpass's signal that a
+    # Myinfo upstream agency is unavailable. Retrying the userinfo GET is safe —
+    # it is idempotent against an access token we already hold — and it spares
+    # the user a full Singpass re-login, since the authorization code is already
+    # spent by the time we get here.
+    context "when the userinfo endpoint returns a transient upstream error" do
+      # Keep the suite fast: assert the backoff is asked for, don't actually wait.
+      before { allow(client).to receive(:sleep) }
+
+      it "retries and succeeds when a 502 is followed by a 200" do
+        stub_request(:get, userinfo_url)
+          .to_return(status: 502, body: '{"error":"upstream_dependency_error"}')
+          .then.to_return(status: 200, body: "encrypted-userinfo-jwe")
+
+        result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+
+        expect(result[:person_data]).to eq(person_data)
+        expect(WebMock).to have_requested(:get, userinfo_url).twice
+      end
+
+      it "gives up after the attempt cap and surfaces the last status" do
+        stub_request(:get, userinfo_url)
+          .to_return(status: 502, body: '{"error":"upstream_dependency_error"}')
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
+          expect(e.status).to eq(502)
+        }
+
+        expect(WebMock).to have_requested(:get, userinfo_url)
+          .times(described_class::USERINFO_MAX_ATTEMPTS)
+      end
+
+      it "backs off between attempts rather than hammering the upstream" do
+        stub_request(:get, userinfo_url).to_return(status: 503, body: "unavailable")
+
+        expect(client).to receive(:sleep).with(a_value > 0)
+          .exactly(described_class::USERINFO_MAX_ATTEMPTS - 1).times
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError)
+      end
+
+      # RFC 9449 proofs carry a one-shot jti; replaying the first attempt's
+      # header would be rejected. The suite stubs build_dpop_proof to a constant,
+      # so the observable invariant is that a proof is *built* per attempt.
+      it "rebuilds the DPoP proof on each attempt (a replayed jti is rejected)" do
+        stub_request(:get, userinfo_url)
+          .to_return(status: 502, body: "bad gateway")
+          .then.to_return(status: 200, body: "encrypted-userinfo-jwe")
+
+        client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+
+        expect(StandardSingpass::Myinfo::Security).to have_received(:build_dpop_proof).with(
+          http_method: "GET",
+          url: userinfo_url,
+          key_pair: dpop_key_pair,
+          access_token: anything
+        ).twice
+      end
+
+      it "does not retry a 4xx — that is our bug, not their outage" do
+        stub_request(:get, userinfo_url).to_return(status: 400, body: "bad request")
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError)
+
+        expect(WebMock).to have_requested(:get, userinfo_url).once
+      end
+
+      it "does not retry a timeout — the request budget is already spent" do
+        stub_request(:get, userinfo_url).to_timeout
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError, /unreachable/)
+
+        expect(WebMock).to have_requested(:get, userinfo_url).once
+      end
+
+      it "never retries the token exchange — the auth code is single-use" do
+        stub_request(:post, token_url)
+          .to_return(status: 502, body: "bad gateway")
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError)
+
+        expect(WebMock).to have_requested(:post, token_url).once
+      end
+    end
+
     context "when the userinfo endpoint returns an error" do
       it "raises AuthenticationError on 403" do
         stub_request(:get, userinfo_url).to_return(status: 403, body: "forbidden")
@@ -433,6 +528,16 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         expect {
           client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError, /Person data fetch failed/)
+      end
+
+      it "exposes the HTTP status on ApiError so hosts don't parse the message" do
+        stub_request(:get, userinfo_url).to_return(status: 500, body: "server error")
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
+          expect(e.status).to eq(500)
+        }
       end
 
       it "surfaces FAPI error/error_description so Singpass's reason is grep-able" do

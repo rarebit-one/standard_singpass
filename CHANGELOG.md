@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `StandardSingpass::Myinfo::ApiError#status` — the HTTP status of the Myinfo response that produced the error (`nil` for transport failures and for errors a host raises itself). Hosts need this to separate "Myinfo or one of its upstream agencies is unavailable" (502/503/504 — tell the user to retry shortly) from "we sent something wrong" (4xx — a bug worth surfacing to support). Previously the only way to recover the status was to parse it back out of the message, which is not a stable interface. Set on both the userinfo and token-exchange failure paths.
+- Bounded retry with jittered exponential backoff on the **userinfo** fetch for transient upstream statuses (502/503/504), 3 attempts total. Singpass returns `502 upstream_dependency_error` whenever a Myinfo upstream (CPF Board, IRAS, MOM, …) is unavailable — including throughout their [published maintenance windows](https://docs.developer.singpass.gov.sg/docs/products/singpass-myinfo/scheduled-downtimes) — and a single transient one previously failed the whole flow. Because the authorization code is already spent by that point, the user's only recovery was a **full Singpass re-login**, so a momentary blip cost a complete re-authentication.
+
+### Notes
+
+- The retry is scoped deliberately:
+  - **Userinfo only.** The token exchange is never retried — it consumes a single-use authorization code, and replaying it earns an `invalid_grant`. Userinfo is an idempotent GET against an access token already in hand.
+  - **Status-based failures only, never timeouts.** A 5xx returns in well under a second; a timed-out attempt has already spent the request budget, and retrying it risks turning a slow page into a gateway error.
+  - **Inside `network_wrapper`, not outside.** A host's wrapper is typically a circuit breaker; keeping retries inside means one user attempt counts as one failure against the breaker rather than three, so a single unlucky user can't trip a shared circuit alone.
+- The DPoP proof is rebuilt on every attempt — RFC 9449 proofs carry a one-shot `jti`, so a replayed header would be rejected.
+
 ## [0.1.0] - 2026-05-24
 
 ### Added
