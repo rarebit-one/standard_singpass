@@ -169,17 +169,25 @@ module StandardSingpass
 
       sig { params(access_token: String, dpop_key_pair: OpenSSL::PKey::EC).returns(T::Hash[String, T.untyped]) }
       def fetch_userinfo(access_token:, dpop_key_pair:)
+        # Retries sit INSIDE the network wrapper deliberately. A host's wrapper
+        # is typically a circuit breaker; keeping retries inside means one user
+        # attempt counts as one failure against the breaker instead of three,
+        # so a single unlucky borrower can't trip a shared circuit on their own.
         with_network_wrapper do
-          response = http_connection.get(@userinfo_url) do |req|
-            req.headers["Authorization"] = "DPoP #{access_token}"
-            req.headers["DPoP"] = Security.build_dpop_proof(
-              http_method: "GET",
-              url: T.must(@userinfo_url),
-              key_pair: dpop_key_pair,
-              access_token:
-            )
+          with_userinfo_retries do
+            # The DPoP proof carries a per-request jti/iat, so it is rebuilt on
+            # every attempt — replaying one would be rejected as a duplicate.
+            response = http_connection.get(@userinfo_url) do |req|
+              req.headers["Authorization"] = "DPoP #{access_token}"
+              req.headers["DPoP"] = Security.build_dpop_proof(
+                http_method: "GET",
+                url: T.must(@userinfo_url),
+                key_pair: dpop_key_pair,
+                access_token:
+              )
+            end
+            handle_person_response(response, jwks_url: @userinfo_jwks_url)
           end
-          handle_person_response(response, jwks_url: @userinfo_jwks_url)
         end
       rescue Faraday::Error => e
         raise ApiError, "MyInfo userinfo endpoint unreachable: #{e.class}"
@@ -332,7 +340,10 @@ module StandardSingpass
         when 429
           raise RateLimitError, "Token endpoint rate limit exceeded"
         else
-          raise ApiError, "Token exchange failed (HTTP #{response.status}): #{body_excerpt(response)}"
+          raise ApiError.new(
+            "Token exchange failed (HTTP #{response.status}): #{body_excerpt(response)}",
+            status: response.status
+          )
         end
       rescue KeyError
         raise AuthenticationError, "Token response missing access_token"
@@ -350,8 +361,58 @@ module StandardSingpass
         when 429
           raise RateLimitError, "Person endpoint rate limit exceeded"
         else
-          raise ApiError, "Person data fetch failed (HTTP #{response.status}): #{body_excerpt(response)}"
+          raise ApiError.new(
+            "Person data fetch failed (HTTP #{response.status}): #{body_excerpt(response)}",
+            status: response.status
+          )
         end
+      end
+
+      # Myinfo statuses that mean "Myinfo, or one of its upstream agencies, is
+      # having a moment" — transient and worth one more try. 502 is Singpass's
+      # documented upstream-dependency signal (`upstream_dependency_error`),
+      # which they also return throughout CPF/IRAS/MOM maintenance windows.
+      RETRYABLE_USERINFO_STATUSES = T.let([502, 503, 504].freeze, T::Array[Integer])
+
+      # Total attempts, not retries — 3 means the original plus two more.
+      USERINFO_MAX_ATTEMPTS = 3
+
+      # Base for the exponential backoff, in seconds (0.3s, then 0.6s, each
+      # with jitter). Deliberately small: this runs inside a browser redirect
+      # from Singpass, so the whole retry budget has to stay well under the
+      # user's patience and the host's request timeout.
+      USERINFO_RETRY_BASE_DELAY = 0.3
+
+      # Retry a userinfo fetch that failed with a transient upstream status.
+      #
+      # Safe to retry because the userinfo call is an idempotent GET against an
+      # access token we already hold — unlike the token exchange, which burns a
+      # single-use authorization code and must never be replayed.
+      #
+      # Only status-based failures are retried, never timeouts: a 5xx comes back
+      # in well under a second, whereas a timed-out attempt has already spent
+      # the request budget and retrying it risks turning a slow page into a
+      # gateway error. A transport failure therefore propagates on the first hit.
+      sig { params(block: T.proc.returns(T::Hash[String, T.untyped])).returns(T::Hash[String, T.untyped]) }
+      def with_userinfo_retries(&block)
+        attempt = 0
+        begin
+          attempt += 1
+          block.call
+        rescue ApiError => e
+          raise unless RETRYABLE_USERINFO_STATUSES.include?(e.status)
+          raise if attempt >= USERINFO_MAX_ATTEMPTS
+
+          sleep(userinfo_retry_delay(attempt))
+          retry
+        end
+      end
+
+      # Exponential backoff with full jitter, so concurrent borrowers hitting
+      # the same upstream blip don't retry in lockstep.
+      sig { params(attempt: Integer).returns(Float) }
+      def userinfo_retry_delay(attempt)
+        Float(rand * USERINFO_RETRY_BASE_DELAY * (2**(attempt - 1)))
       end
 
       # Standardized FAPI/OAuth error fields that are safe to surface in error
