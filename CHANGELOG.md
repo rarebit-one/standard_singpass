@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-22
+
 ### Added
 
 - `StandardSingpass::Myinfo::ApiError#status` — the HTTP status of the Myinfo response that produced the error (`nil` for transport failures and for errors a host raises itself). Hosts need this to separate "Myinfo or one of its upstream agencies is unavailable" (502/503/504 — tell the user to retry shortly) from "we sent something wrong" (4xx — a bug worth surfacing to support). Previously the only way to recover the status was to parse it back out of the message, which is not a stable interface. Set on both the userinfo and token-exchange failure paths.
