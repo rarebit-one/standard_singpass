@@ -382,6 +382,44 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /Failed to fetch JWKS/)
     end
 
+    it "carries the JWKS endpoint's HTTP status, so an outage there is classifiable" do
+      stub_jwks_request(status: 503, body: "unavailable")
+
+      jws = sign_jws(payload, ec_key, kid)
+      expect {
+        described_class.validate_jws(jws, jwks_url:)
+      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError) { |error|
+        expect(error.status).to eq(503)
+        expect(error.transport?).to be(false)
+        expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
+      }
+    end
+
+    it "flags an unreachable JWKS endpoint as a transport failure" do
+      allow(Faraday).to receive(:get).and_raise(Faraday::ConnectionFailed.new("Connection refused"))
+
+      jws = sign_jws(payload, ec_key, kid)
+      expect {
+        described_class.validate_jws(jws, jwks_url:)
+      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError) { |error|
+        expect(error.transport?).to be(true)
+        expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
+      }
+    end
+
+    it "does not flag a genuinely bad signature as an outage" do
+      stub_jwks_request(status: 200, body: jwks_json)
+
+      jws = sign_jws(payload, OpenSSL::PKey::EC.generate("prime256v1"), kid)
+      expect {
+        described_class.validate_jws(jws, jwks_url:)
+      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError) { |error|
+        expect(error.status).to be_nil
+        expect(error.transport?).to be(false)
+        expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(false)
+      }
+    end
+
     it "caches JWKS responses" do
       memory_store = ActiveSupport::Cache::MemoryStore.new
       allow(Rails).to receive(:cache).and_return(memory_store)

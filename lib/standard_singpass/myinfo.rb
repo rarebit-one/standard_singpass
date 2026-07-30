@@ -10,13 +10,16 @@ require "securerandom"
 require "aes_key_wrap"
 
 require "standard_singpass/myinfo/error"
+require "standard_singpass/myinfo/failure_classifier"
 require "standard_singpass/myinfo/configuration"
 require "standard_singpass/myinfo/ecdh_jwe"
 require "standard_singpass/myinfo/security"
 require "standard_singpass/myinfo/client"
 require "standard_singpass/myinfo/person_data_parser"
+require "standard_singpass/myinfo/noa"
 require "standard_singpass/myinfo/jwks_generator"
 require "standard_singpass/myinfo/test_personas"
+require "standard_singpass/myinfo/mock_mode_guard"
 
 module StandardSingpass
   module Myinfo

@@ -177,6 +177,19 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         }.to raise_error(StandardSingpass::Myinfo::PARError, /rejected/)
       end
 
+      it "carries the HTTP status on a PAR-leg upstream failure, so the classifier sees it" do
+        stub_request(:post, par_url).to_return(status: 502, body: "upstream_dependency_error")
+
+        expect {
+          client.push_authorization_request(
+            code_challenge: "c", state: "s", nonce: "n", dpop_key_pair:
+          )
+        }.to raise_error(StandardSingpass::Myinfo::PARError) { |error|
+          expect(error.status).to eq(502)
+          expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
+        }
+      end
+
       it "raises PARError on 400" do
         stub_request(:post, par_url).to_return(status: 400, body: '{"error":"invalid_request"}')
 
@@ -592,6 +605,39 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         expect {
           client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
         }.to raise_error(StandardSingpass::Myinfo::SignatureError)
+      end
+
+      it "carries the JWKS outage flags onto SignatureError, so it is not read as a bad signature" do
+        allow(StandardSingpass::Myinfo::Security).to receive(:validate_jws) do |jws, **_kwargs|
+          if jws == decrypted_id_token_jws
+            id_token_claims
+          else
+            raise StandardSingpass::Myinfo::Security::ValidationError.new(
+              "Failed to fetch JWKS: HTTP 503", status: 503
+            )
+          end
+        end
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::SignatureError) { |error|
+          expect(error.status).to eq(503)
+          expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
+        }
+      end
+
+      it "carries the JWKS outage flags onto the ID-token AuthenticationError too" do
+        allow(StandardSingpass::Myinfo::Security).to receive(:validate_jws)
+          .and_raise(StandardSingpass::Myinfo::Security::ValidationError.new(
+            "Failed to fetch JWKS: Connection refused", transport: true
+          ))
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::AuthenticationError) { |error|
+          expect(error.transport?).to be(true)
+          expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
+        }
       end
 
       it "does not include PII in error messages" do

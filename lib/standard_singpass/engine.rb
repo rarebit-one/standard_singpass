@@ -12,6 +12,12 @@ if defined?(::Rails::Engine)
       rake_tasks do
         load File.expand_path("../tasks/standard_singpass.rake", __dir__)
       end
+
+      # Runs after the host's own initializers, so `config.mock_mode` has
+      # been set by the time it is read. Inert unless mock mode is on.
+      config.after_initialize do
+        StandardSingpass::Myinfo::MockModeGuard.check!
+      end
     end
   end
 end

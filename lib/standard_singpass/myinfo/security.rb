@@ -5,8 +5,15 @@ module StandardSingpass
     class Security
       extend T::Sig
 
-      class DecryptionError < StandardError; end
-      class ValidationError < StandardError; end
+      # Both inherit the gem's base Error so they carry `status` and
+      # `transport?`. That matters for ValidationError in particular: fetching
+      # the JWKS is a network call to a Singpass host, so "the JWKS endpoint
+      # is down" and "this signature is genuinely bad" both surface here and
+      # must stay distinguishable — the first is an outage, the second is a
+      # key/cert problem. FailureClassifier reads those attributes; without
+      # them a JWKS-host outage would be reported as our own bug.
+      class DecryptionError < Error; end
+      class ValidationError < Error; end
 
       JWKS_CACHE_TTL = T.let(1.hour, ActiveSupport::Duration)
 
@@ -170,11 +177,18 @@ module StandardSingpass
 
         Rails.cache.fetch(cache_key, expires_in: JWKS_CACHE_TTL) do
           response = Faraday.get(url) { |req| req.options.timeout = 5; req.options.open_timeout = 3 }
-          raise ValidationError, "Failed to fetch JWKS: HTTP #{response.status}" unless response.success?
+          unless response.success?
+            raise ValidationError.new("Failed to fetch JWKS: HTTP #{response.status}", status: response.status)
+          end
 
           JSON.parse(response.body)
         end
-      rescue Faraday::Error, JSON::ParserError => e
+      rescue Faraday::Error => e
+        # Never reached the JWKS host — the same "their side" case a transport
+        # failure on any other leg represents.
+        raise ValidationError.new("Failed to fetch JWKS: #{e.message}", transport: true)
+      rescue JSON::ParserError => e
+        # Reached it and got something unusable. Not an availability problem.
         raise ValidationError, "Failed to fetch JWKS: #{e.message}"
       end
       private_class_method :fetch_jwks
