@@ -16,3 +16,18 @@ jobs:
     with:
       ruby-versions: '["4.0.1","4.0.2","4.0.3","4.0.4"]'
       lint-command: bin/rubocop -f github
+      # `extra-lint-commands` is the only place the reusable workflow runs
+      # anything beyond `lint-command`. Without it, the brakeman and
+      # bundler-audit gates that lefthook enforces on `pre-push` existed
+      # only on developer machines — so `main` stayed green while the
+      # lockfile accumulated eight advisories. Mirrors standard_ledger
+      # and standard_circuit.
+      #
+      # `--update` refreshes ruby-advisory-db on every run, which means a
+      # newly published advisory against an already-locked gem can turn CI
+      # red with no code change. That is the intent: for a security gate,
+      # learning about a CVE from a red build we didn't cause is strictly
+      # better than a stale database quietly passing.
+      extra-lint-commands: |
+        bundle exec brakeman --no-pager --force
+        bundle exec bundler-audit --update
