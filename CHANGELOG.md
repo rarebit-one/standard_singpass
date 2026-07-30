@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-30
+
 ### Added
 
 - **`StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)`** — one answer to the question every host asks in its rescue: is Singpass unavailable, or is our request wrong? It decides what the user is told, and the two answers are not interchangeable — an unavailable upstream clears itself within minutes ("try again shortly"), while "contact support and quote this reference" is a dead end for a transient blip. True for 502/503/504, HTTP 429, and transport failures on any leg; false for authentication, decryption, signature, and configuration errors. `FailureClassifier::UPSTREAM_UNAVAILABLE_STATUSES` is the documented status list, and `Client::RETRYABLE_USERINFO_STATUSES` is now an alias of it rather than a second copy — the statuses worth one more automatic attempt are exactly the statuses that mean "their side, transient".
