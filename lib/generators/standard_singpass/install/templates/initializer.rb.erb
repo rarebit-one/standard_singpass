@@ -19,7 +19,9 @@
 #   MYINFO_MIN_ACR           Required Authentication Context Class Reference
 #                            URN, e.g. urn:singpass:authentication:loa:3
 #   MYINFO_MOCK_MODE         When set, suppresses missing-key warnings and
-#                            unlocks any mock-callback routes the host registers
+#                            unlocks any mock-callback routes the host
+#                            registers. The gem REFUSES TO BOOT if this is set
+#                            on a production deploy — see MockModeGuard.
 
 StandardSingpass::Myinfo.configure do |c|
   # Endpoint set. :production → live Singpass FAPI; :staging → sandbox.
@@ -40,6 +42,14 @@ StandardSingpass::Myinfo.configure do |c|
 
   c.minimum_acr = ENV["MYINFO_MIN_ACR"]
   c.mock_mode   = ENV["MYINFO_MOCK_MODE"].present?
+
+  # How the gem decides whether this deploy is real production, for the
+  # mock-mode boot guard. Defaults to Rails.env.production?. Staging and
+  # preview deploys routinely run RAILS_ENV=production while being legitimate
+  # places to run mock mode — if that describes you, point this at your own
+  # environment discriminator so mock mode stays legal there and still
+  # refuses to boot on real production.
+  # c.production_env_detector = -> { AppEnv.production? }
 
   # Path to a JSON file of test personas the host can drive mock callbacks
   # against. Defaults to the gem's bundled fixture set. Override here if you

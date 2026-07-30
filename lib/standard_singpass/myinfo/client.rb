@@ -85,7 +85,7 @@ module StandardSingpass
           handle_par_response(response)
         end
       rescue Faraday::Error => e
-        raise PARError, "PAR endpoint unreachable: #{e.class}"
+        raise PARError.new("PAR endpoint unreachable: #{e.class}", transport: true)
       end
 
       sig { params(request_uri: String).returns(String) }
@@ -121,11 +121,11 @@ module StandardSingpass
           data = JSON.parse(response.body)
           { request_uri: data.fetch("request_uri"), expires_in: data.fetch("expires_in") }
         when 401, 403
-          raise PARError, "PAR rejected (HTTP #{response.status}): #{body_excerpt(response)}"
+          raise PARError.new("PAR rejected (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
         when 429
           raise RateLimitError, "PAR endpoint rate limit exceeded"
         else
-          raise PARError, "PAR failed (HTTP #{response.status}): #{body_excerpt(response)}"
+          raise PARError.new("PAR failed (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
         end
       rescue KeyError
         raise PARError, "PAR response missing required fields"
@@ -164,7 +164,7 @@ module StandardSingpass
           handle_token_response(response)
         end
       rescue Faraday::Error => e
-        raise ApiError, "MyInfo token endpoint unreachable: #{e.class}"
+        raise ApiError.new("MyInfo token endpoint unreachable: #{e.class}", transport: true)
       end
 
       sig { params(access_token: String, dpop_key_pair: OpenSSL::PKey::EC).returns(T::Hash[String, T.untyped]) }
@@ -190,7 +190,7 @@ module StandardSingpass
           end
         end
       rescue Faraday::Error => e
-        raise ApiError, "MyInfo userinfo endpoint unreachable: #{e.class}"
+        raise ApiError.new("MyInfo userinfo endpoint unreachable: #{e.class}", transport: true)
       end
 
       sig { params(id_token: T.nilable(String), nonce: T.nilable(String)).returns(T::Hash[String, T.untyped]) }
@@ -222,8 +222,15 @@ module StandardSingpass
         Security.validate_jws(decrypted, jwks_url: T.must(@jwks_url))
       rescue Security::DecryptionError
         raise AuthenticationError, "ID token decryption failed"
-      rescue Security::ValidationError
-        raise AuthenticationError, "ID token signature verification failed"
+      rescue Security::ValidationError => e
+        # Carry status/transport across the re-raise: a JWKS endpoint that is
+        # down produces the same exception here as a genuinely bad signature,
+        # and only these attributes tell them apart.
+        raise AuthenticationError.new(
+          "ID token signature verification failed",
+          status: e.status,
+          transport: e.transport?
+        )
       rescue JWT::DecodeError
         raise AuthenticationError, "Failed to decode ID token"
       end
@@ -336,7 +343,7 @@ module StandardSingpass
           data = JSON.parse(response.body)
           { access_token: data.fetch("access_token"), id_token: data["id_token"] }
         when 401, 403
-          raise AuthenticationError, "Token exchange rejected (HTTP #{response.status}): #{body_excerpt(response)}"
+          raise AuthenticationError.new("Token exchange rejected (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
         when 429
           raise RateLimitError, "Token endpoint rate limit exceeded"
         else
@@ -357,7 +364,7 @@ module StandardSingpass
         when 200
           decrypt_and_validate_person(response.body, jwks_url:)
         when 401, 403
-          raise AuthenticationError, "Person data request forbidden (HTTP #{response.status}): #{body_excerpt(response)}"
+          raise AuthenticationError.new("Person data request forbidden (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
         when 429
           raise RateLimitError, "Person endpoint rate limit exceeded"
         else
@@ -372,7 +379,12 @@ module StandardSingpass
       # having a moment" — transient and worth one more try. 502 is Singpass's
       # documented upstream-dependency signal (`upstream_dependency_error`),
       # which they also return throughout CPF/IRAS/MOM maintenance windows.
-      RETRYABLE_USERINFO_STATUSES = T.let([502, 503, 504].freeze, T::Array[Integer])
+      #
+      # Aliased from FailureClassifier rather than restated: the statuses
+      # worth one more automatic attempt are exactly the statuses the host is
+      # told to present as "their side, try again shortly", and two copies of
+      # that list would eventually disagree.
+      RETRYABLE_USERINFO_STATUSES = FailureClassifier::UPSTREAM_UNAVAILABLE_STATUSES
 
       # Total attempts, not retries — 3 means the original plus two more.
       USERINFO_MAX_ATTEMPTS = 3
@@ -457,7 +469,8 @@ module StandardSingpass
       rescue Security::DecryptionError => e
         raise DecryptionError, e.message
       rescue Security::ValidationError => e
-        raise SignatureError, e.message
+        # As above — a JWKS-host outage must not be reported as a bad signature.
+        raise SignatureError.new(e.message, status: e.status, transport: e.transport?)
       end
 
       sig { void }

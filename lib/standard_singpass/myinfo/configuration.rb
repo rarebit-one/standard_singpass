@@ -17,6 +17,10 @@
 #   c.minimum_acr            - Required Authentication Context Class Reference URN
 #   c.network_wrapper        - Lambda wrapping outbound Faraday calls (e.g. circuit breaker)
 #   c.mock_mode              - When true, suppresses missing-key warnings
+#                              (and is refused outright on a production deploy
+#                              — see MockModeGuard)
+#   c.production_env_detector - Callable returning whether this deploy is real
+#                              production; defaults to Rails.env.production?
 #   c.personas_path          - Pathname to JSON file of test personas
 #   c.authorize_url, c.par_url, c.token_url, c.userinfo_url,
 #   c.jwks_url, c.userinfo_jwks_url, c.issuer
@@ -125,12 +129,24 @@ module StandardSingpass
                     :signing_key, :signing_kid, :encryption_keys,
                     :minimum_acr, :network_wrapper, :mock_mode, :personas_path
 
+      # Optional callable deciding whether the current deploy is real
+      # production, for the purpose of MockModeGuard. Takes no args, returns a
+      # boolean. When nil (the default) the gem falls back to
+      # Rails.env.production?, so existing consumers are unchanged.
+      #
+      # Hosts that distinguish a physical deploy environment from RAILS_ENV
+      # — staging and preview boxes routinely run RAILS_ENV=production — can
+      # supply `-> { AppEnv.production? }` so mock mode stays legal on those
+      # while still refusing to boot on real production.
+      attr_accessor :production_env_detector
+
       def initialize
         self.environment = :staging
         @scope = DEFAULT_SCOPE
         @encryption_keys = []
         @network_wrapper = ->(&block) { block.call }
         @mock_mode = false
+        @production_env_detector = nil
       end
 
       def environment=(env)
