@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Consumer list in `CLAUDE.md` narrowed to the one app that actually consumes this gem.** It said "the rarebit-one workspace's web apps", which reads as all five and would send a rollout at four apps with no Singpass integration. The single consumer is `fundbright-web`, in the sibling `~/Workspace/fundbright/` workspace. The list is now bulleted so the new advisory `check-gem-family-drift.sh` can diff it against the canonical matrix in the workspace's `rollout-gem/SKILL.md` — prose that a human reads as one thing and a script as another is how this drifted in the first place.
+
 ## [0.3.0] - 2026-07-30
 
 ### Added

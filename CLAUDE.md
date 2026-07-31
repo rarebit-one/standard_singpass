@@ -33,4 +33,10 @@ See the `/worktree` and `/start` skills for full conventions and flags.
 
 ## Consumers
 
-`standard_singpass` is consumed by the rarebit-one workspace's web apps. After publishing a new version via `/publish-gem`, roll it out with the workspace-level `/rollout-gem standard_singpass [<version>]` skill (defined at the rarebit-one workspace root). The canonical consumer matrix lives in that skill's `SKILL.md`; the list there is the single source of truth so version pins don't drift between two files.
+`standard_singpass` is consumed by one app:
+
+- `fundbright-web` (in the sibling `~/Workspace/fundbright/` workspace, org `fundbright` — not beside this repo)
+
+Singpass MyInfo is a fundbright-only integration. **This list is deliberately narrower than "the workspace's web apps"**, which is what this section used to say — that phrasing reads as "all five" and would send a rollout at four apps that do not consume the gem at all.
+
+After publishing a new version via `/publish-gem`, roll it out with the workspace-level `/rollout-gem standard_singpass [<version>]` skill (defined at the rarebit-one workspace root). The canonical consumer matrix — including version constraints — lives in that skill's `SKILL.md`; the list here is a summary of it, kept in the bulleted form that `.claude/scripts/check-gem-family-drift.sh` compares against the matrix.
