@@ -152,17 +152,23 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         }
       end
 
-      it "sends acr_values in the PAR request body when env var is set" do
-        allow(StandardSingpass::Myinfo.configuration).to receive(:minimum_acr).and_return("urn:singpass:authentication:loa:2")
+      # Regression (0.3.1): Singpass rejects `acr_values` on a MyInfo PAR with
+      # HTTP 400 invalid_request — "The acr_values parameter can only be used
+      # for specific use cases." minimum_acr is a client-side check of the
+      # id_token `acr` only, and must never leak onto the wire.
+      %w[urn:singpass:authentication:loa:2 urn:singpass:authentication:loa:3].each do |floor|
+        it "never sends acr_values in the PAR request body when minimum_acr is #{floor}" do
+          allow(StandardSingpass::Myinfo.configuration).to receive(:minimum_acr).and_return(floor)
 
-        client.push_authorization_request(
-          code_challenge: "c", state: "s", nonce: "n", dpop_key_pair:
-        )
+          client.push_authorization_request(
+            code_challenge: "c", state: "s", nonce: "n", dpop_key_pair:
+          )
 
-        expect(WebMock).to have_requested(:post, par_url).with { |req|
-          body = URI.decode_www_form(req.body).to_h
-          body["acr_values"] == "urn:singpass:authentication:loa:2"
-        }
+          expect(WebMock).to have_requested(:post, par_url).with { |req|
+            body = URI.decode_www_form(req.body).to_h
+            !body.key?("acr_values")
+          }
+        end
       end
     end
 

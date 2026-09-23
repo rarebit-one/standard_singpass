@@ -12,6 +12,15 @@ Add to your Gemfile:
 gem "standard_singpass"
 ```
 
+Then generate the initializer:
+
+```bash
+bin/rails g standard_singpass:install
+```
+
+This writes `config/initializers/standard_singpass.rb`, mapping the `MYINFO_*`
+environment variables onto the gem's configuration (see below).
+
 ## Configuration
 
 ```ruby
@@ -24,17 +33,18 @@ StandardSingpass::Myinfo.configure do |c|
   c.client_id        = ENV["MYINFO_CLIENT_ID"]
   c.redirect_url     = ENV["MYINFO_REDIRECT_URL"]
 
-  # Optional: override default scope (defaults to a 36-attribute set covering
-  # identity, contact, income, employment, housing, assets, vehicles).
+  # Optional: override default scope (defaults to 42 scopes — `openid` plus 41
+  # MyInfo attributes covering identity, contact, income, employment, housing,
+  # assets, vehicles).
   # c.scope = "openid name email ..."
 
   # Required: full private JWKS JSON containing both sig (ES256) and enc
   # (ECDH-ES+A256KW) keys with the private scalar `d`.
   c.private_jwks_json = ENV["MYINFO_PRIVATE_JWKS"]
 
-  # Optional: enforce minimum Authentication Context Class Reference. Set to
-  # e.g. "urn:singpass:authentication:loa:3" to require high-assurance.
-  c.minimum_acr = ENV["MYINFO_MIN_ACR"]
+  # Optional: client-side floor on the id_token `acr` claim. Never sent to
+  # Singpass — see "Assurance level (`minimum_acr`)" below before setting it.
+  # c.minimum_acr = "urn:singpass:authentication:loa:2"
 
   # Optional: wrap outbound HTTP calls with a circuit breaker / retry layer.
   # Defaults to identity (no wrapper).
@@ -53,6 +63,33 @@ StandardSingpass::Myinfo.configure do |c|
   # c.production_env_detector = -> { AppEnv.production? }
 end
 ```
+
+## Assurance level (`minimum_acr`)
+
+`config.minimum_acr` is an optional, **client-side** check. When set to a
+Singpass LOA URN (`urn:singpass:authentication:loa:2` or `...:loa:3`), the
+client rejects any id_token whose `acr` claim is below that level — or missing
+— with `StandardSingpass::Myinfo::AuthenticationError`. A value that is not a
+recognised LOA URN raises `ConfigurationError`. Unset or blank disables the
+check.
+
+It is **never sent to Singpass.** Singpass rejects `acr_values` on a MyInfo
+Pushed Authorization Request:
+
+```
+PAR failed (HTTP 400) invalid_request —
+"The acr_values parameter can only be used for specific use cases."
+```
+
+Versions up to 0.3.0 forwarded a configured `minimum_acr` as `acr_values`, so
+setting it broke every MyInfo login. From 0.3.1 the PAR request never carries
+`acr_values`. MyInfo's assurance level is governed by Singpass server-side, so
+most hosts should leave `minimum_acr` unset; if you do set it, set it in code
+rather than from a loosely-managed environment variable, because a wrong value
+fails every login closed.
+
+The `acr` Singpass actually returned is surfaced as `result[:id_token_acr]`
+from `get_person_data` for audit, whether or not a floor is configured.
 
 ## Mock mode
 
