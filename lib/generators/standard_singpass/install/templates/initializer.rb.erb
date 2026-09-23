@@ -16,8 +16,6 @@
 #   MYINFO_SCOPE             Space-separated scopes (defaults to DEFAULT_SCOPE)
 #   MYINFO_USERINFO_URL      Userinfo endpoint override (rarely needed)
 #   MYINFO_USERINFO_JWKS_URL Userinfo JWKS endpoint override (rarely needed)
-#   MYINFO_MIN_ACR           Required Authentication Context Class Reference
-#                            URN, e.g. urn:singpass:authentication:loa:3
 #   MYINFO_MOCK_MODE         When set, suppresses missing-key warnings and
 #                            unlocks any mock-callback routes the host
 #                            registers. The gem REFUSES TO BOOT if this is set
@@ -40,8 +38,17 @@ StandardSingpass::Myinfo.configure do |c|
   c.userinfo_url      = ENV["MYINFO_USERINFO_URL"]      if ENV["MYINFO_USERINFO_URL"].present?
   c.userinfo_jwks_url = ENV["MYINFO_USERINFO_JWKS_URL"] if ENV["MYINFO_USERINFO_JWKS_URL"].present?
 
-  c.minimum_acr = ENV["MYINFO_MIN_ACR"]
-  c.mock_mode   = ENV["MYINFO_MOCK_MODE"].present?
+  c.mock_mode = ENV["MYINFO_MOCK_MODE"].present?
+
+  # Optional client-side floor on the id_token `acr` claim. The gem rejects an
+  # id_token whose assurance level is below it (AuthenticationError); it is
+  # NEVER sent to Singpass — `acr_values` on a MyInfo PAR is rejected with
+  # HTTP 400 invalid_request. MyInfo's assurance level is governed by Singpass
+  # server-side, so most hosts should leave this unset.
+  #
+  # WARNING: do not wire this to an environment variable without a test that
+  # exercises the real flow — a stray value fails every login closed.
+  # c.minimum_acr = "urn:singpass:authentication:loa:2"
 
   # How the gem decides whether this deploy is real production, for the
   # mock-mode boot guard. Defaults to Rails.env.production?. Staging and

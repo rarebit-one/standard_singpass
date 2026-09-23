@@ -60,17 +60,17 @@ module StandardSingpass
           )
         }
 
-        # Ask Singpass to enforce a minimum assurance level upstream. The same
-        # config attribute also drives downstream validation of the returned
-        # id_token (validate_id_token_acr) — defense in depth. When unset, we
-        # skip both the request parameter and the validator entirely; useful
-        # for sandbox personas that may return non-conformant acr values.
-        # Concrete URN per Singpass: `urn:singpass:authentication:loa:N` (N
-        # is 2 or 3; Singpass never issues below LOA 2). `.to_s.strip` mirrors
-        # the validator so whitespace-only values are treated as unset and any
-        # value sent over the wire is trimmed.
-        min_acr = @minimum_acr.to_s.strip
-        body[:acr_values] = min_acr unless min_acr.empty?
+        # `acr_values` is deliberately NEVER sent, even when `minimum_acr` is
+        # configured. Singpass rejects it on a MyInfo PAR:
+        #
+        #   PAR failed (HTTP 400) invalid_request —
+        #   "The acr_values parameter can only be used for specific use cases."
+        #
+        # Until 0.3.1 a non-empty `minimum_acr` was forwarded here, which broke
+        # every MyInfo onboarding for any host that set it. `minimum_acr` is
+        # now purely a client-side check of the returned id_token `acr` claim
+        # (see validate_id_token_acr); MyInfo's assurance level itself is
+        # governed by Singpass server-side.
 
         with_network_wrapper do
           response = http_connection.post(@par_url) do |req|
@@ -299,8 +299,9 @@ module StandardSingpass
       # Enforce a minimum Authentication Context Class Reference (`acr`) on the
       # id_token. The floor is configured via `minimum_acr` so staging and
       # production can diverge — staging may tolerate looser values returned by
-      # MyInfo sandbox personas. When the attr is unset or blank, both this
-      # validator and the upstream PAR `acr_values` parameter are skipped.
+      # MyInfo sandbox personas. When the attr is unset or blank, this
+      # validator is skipped. This is the ONLY effect of `minimum_acr` — it is
+      # never sent to Singpass as `acr_values` (see push_authorization_request).
       #
       # Singpass's `acr` URN format is `urn:singpass:authentication:loa:N`
       # where N is 2 or 3 (no LOA 1 path — Singpass's IdP is 2FA by design).

@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-24
+
+### Fixed
+
+- **`minimum_acr` is no longer sent to Singpass as `acr_values` on the Pushed Authorization Request.** Singpass rejects that parameter for MyInfo — `PAR failed (HTTP 400) invalid_request — "The acr_values parameter can only be used for specific use cases."` — so any host that set `minimum_acr` (as the README and the install generator recommended, via `MYINFO_MIN_ACR`) failed every MyInfo login at the first step. This took down production onboarding for a consuming app for roughly four days before it was traced. `minimum_acr` is now purely a client-side check: the id_token `acr` claim is still validated against it (`AuthenticationError` when below the floor or missing; `ConfigurationError` for an unrecognised URN), and the PAR body never carries `acr_values`.
+
+  **Behaviour change / upgrade note:** hosts with `minimum_acr` set go from "every PAR fails with HTTP 400" to "PAR succeeds and the returned id_token `acr` is checked locally". Hosts that left it unset see no change. If you had pinned `minimum_acr = nil` as a workaround, you can keep it — MyInfo's assurance level is governed by Singpass server-side and the floor is optional. If you wired it from `MYINFO_MIN_ACR`, consider removing that env wiring (see Documentation below).
+
 ### Documentation
 
+- **Install generator no longer wires `c.minimum_acr = ENV["MYINFO_MIN_ACR"]`** or documents `MYINFO_MIN_ACR`. The option is left commented out with a warning that it is a client-side check only and that a wrong value fails every login closed.
+- **README:** Installation now mentions `bin/rails g standard_singpass:install`; the `MYINFO_MIN_ACR` wiring is removed from the configuration example; a new "Assurance level (`minimum_acr`)" section explains what the option does and does not do; and the default-scope comment now gives the real size of `DEFAULT_SCOPE` (42 scopes — `openid` plus 41 attributes — not "a 36-attribute set").
 - **Consumer list in `CLAUDE.md` narrowed to the one app that actually consumes this gem.** It said "the rarebit-one workspace's web apps", which reads as all five and would send a rollout at four apps with no Singpass integration. The single consumer is `fundbright-web`, in the sibling `~/Workspace/fundbright/` workspace. The list is now bulleted so the new advisory `check-gem-family-drift.sh` can diff it against the canonical matrix in the workspace's `rollout-gem/SKILL.md` — prose that a human reads as one thing and a script as another is how this drifted in the first place.
 
 ## [0.3.0] - 2026-07-30

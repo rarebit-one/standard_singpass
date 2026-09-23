@@ -14,7 +14,11 @@
 #
 # Optional attributes:
 #   c.scope                  - Space-separated scopes (defaults to DEFAULT_SCOPE)
-#   c.minimum_acr            - Required Authentication Context Class Reference URN
+#   c.minimum_acr            - Minimum Authentication Context Class Reference URN
+#                              (e.g. urn:singpass:authentication:loa:3) checked
+#                              client-side against the id_token `acr` claim.
+#                              Never sent to Singpass: `acr_values` on a MyInfo
+#                              PAR is rejected with HTTP 400 invalid_request.
 #   c.network_wrapper        - Lambda wrapping outbound Faraday calls (e.g. circuit breaker)
 #   c.mock_mode              - When true, suppresses missing-key warnings
 #                              (and is refused outright on a production deploy

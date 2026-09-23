@@ -30,6 +30,18 @@ RSpec.describe StandardSingpass::Generators::InstallGenerator, type: :generator 
     expect(content).to include("c.private_jwks_json")
   end
 
+  # Regression (0.3.1): the template used to wire `c.minimum_acr =
+  # ENV["MYINFO_MIN_ACR"]`. Setting that env var in production broke every
+  # MyInfo onboarding, because a non-empty minimum_acr was sent to Singpass as
+  # `acr_values` on PAR and Singpass rejects that for MyInfo.
+  it "does not wire minimum_acr from ENV" do
+    run_generator
+
+    content = File.read(initializer_path)
+    expect(content).not_to include("MYINFO_MIN_ACR")
+    expect(content).not_to match(/^\s*c\.minimum_acr\s*=/)
+  end
+
   it "is idempotent — skips when initializer already exists" do
     run_generator
     original = File.read(initializer_path)

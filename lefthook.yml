@@ -13,7 +13,7 @@ pre-push:
     rubocop:
       run: bin/rubocop
     brakeman:
-      run: bundle exec brakeman --no-pager
+      run: bundle exec brakeman --no-pager --force
     # Runs tests with --fail-fast for quick feedback. Use LEFTHOOK=0 git push to skip.
     rspec:
       run: bundle exec rspec --fail-fast
