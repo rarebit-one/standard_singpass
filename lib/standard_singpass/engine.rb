@@ -9,6 +9,10 @@ if defined?(::Rails::Engine)
     class Engine < ::Rails::Engine
       isolate_namespace StandardSingpass
 
+      initializer "standard_singpass.deprecator" do |app|
+        app.deprecators[:standard_singpass] = StandardSingpass.deprecator if app.respond_to?(:deprecators)
+      end
+
       rake_tasks do
         load File.expand_path("../tasks/standard_singpass.rake", __dir__)
       end

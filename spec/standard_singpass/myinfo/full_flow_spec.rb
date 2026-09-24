@@ -2,7 +2,7 @@ require "rails_helper"
 
 # Walks the full Singpass MyInfo round-trip end to end — PAR → token exchange
 # → userinfo fetch → JWE decrypt → JWS validate → parse — using the gem's own
-# EcdhJwe.encrypt + JWT.encode to construct the payloads Singpass would
+# Testing::EcdhJwe.encrypt + JWT.encode to construct the payloads Singpass would
 # normally return. Every public surface of Client is exercised in a single
 # spec so a regression anywhere on the happy path surfaces here loudly.
 RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
@@ -123,7 +123,7 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
       "acr"   => "urn:singpass:authentication:loa:3"
     }
     id_token_jws = JWT.encode(id_token_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
-    id_token_jwe = StandardSingpass::Myinfo::EcdhJwe.encrypt(
+    id_token_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
       id_token_jws,
       public_key: client_encryption_key,
       alg:        "ECDH-ES+A256KW",
@@ -142,7 +142,7 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
     # FAPI 2.0 v5 — the parser unwraps that envelope automatically.
     userinfo_payload = { "sub" => "singpass-sub-123", "person_info" => person_data }
     userinfo_jws = JWT.encode(userinfo_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
-    userinfo_jwe = StandardSingpass::Myinfo::EcdhJwe.encrypt(
+    userinfo_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
       userinfo_jws,
       public_key: client_encryption_key,
       alg:        "ECDH-ES+A256KW",
@@ -195,7 +195,7 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
       "acr"   => "urn:singpass:authentication:loa:3"
     }
     id_token_jws = JWT.encode(id_token_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
-    id_token_jwe = StandardSingpass::Myinfo::EcdhJwe.encrypt(
+    id_token_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
       id_token_jws,
       public_key: client_encryption_key,
       alg:        "ECDH-ES+A256KW",
@@ -256,7 +256,7 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
       "acr"   => "urn:singpass:authentication:loa:2"
     }
     id_token_jws = JWT.encode(id_token_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
-    id_token_jwe = StandardSingpass::Myinfo::EcdhJwe.encrypt(
+    id_token_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
       id_token_jws,
       public_key: client_encryption_key,
       alg:        "ECDH-ES+A256KW",
@@ -297,7 +297,7 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
       "acr"   => "urn:singpass:authentication:loa:2" # below the configured loa:3 floor
     }
     id_token_jws = JWT.encode(id_token_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
-    id_token_jwe = StandardSingpass::Myinfo::EcdhJwe.encrypt(
+    id_token_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
       id_token_jws,
       public_key: client_encryption_key,
       alg:        "ECDH-ES+A256KW",

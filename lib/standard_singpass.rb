@@ -20,5 +20,12 @@ module StandardSingpass
     def config
       Myinfo.configuration
     end
+
+    # Deprecation warnings for the gem's own deprecated APIs. Registered
+    # with the host's `Rails.application.deprecators` by the engine, so the
+    # host's deprecation behaviour (log / raise / silence) applies.
+    def deprecator
+      @deprecator ||= ActiveSupport::Deprecation.new("0.5", "StandardSingpass")
+    end
   end
 end

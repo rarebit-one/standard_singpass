@@ -231,7 +231,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
     let(:payload) { '{"sub":"S1234567A","name":"John Doe"}' }
 
     def build_jwe(payload, public_key, kid)
-      StandardSingpass::Myinfo::EcdhJwe.encrypt(
+      StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key:,
         alg: "ECDH-ES+A256KW",

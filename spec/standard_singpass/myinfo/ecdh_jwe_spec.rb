@@ -6,7 +6,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
 
   describe ".encrypt and .decrypt round-trip" do
     it "round-trips with ECDH-ES+A256KW / A256CBC-HS512" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -19,7 +19,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "round-trips with ECDH-ES+A256KW / A256GCM" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -32,7 +32,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "round-trips with ECDH-ES+A256KW / A128CBC-HS256" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -45,7 +45,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "round-trips with ECDH-ES+A256KW / A128GCM" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -58,7 +58,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "round-trips with ECDH-ES+A128KW / A256GCM" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A128KW",
@@ -74,7 +74,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
       apu = "sender-id"
       apv = "recipient-id"
 
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -92,7 +92,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "includes kid in the JWE header when provided" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -105,7 +105,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "includes epk in the JWE header" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -119,7 +119,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "produces 5-segment compact serialization" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -139,7 +139,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
 
     it "raises DecryptionFailed when decrypting with wrong key" do
       other_key = OpenSSL::PKey::EC.generate("prime256v1")
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -162,7 +162,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "raises DecryptionFailed when authentication tag is tampered (CBC)" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -181,7 +181,7 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
 
     it "raises DecryptionFailed when ciphertext is tampered (GCM)" do
-      jwe = described_class.encrypt(
+      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key: ec_key,
         alg: "ECDH-ES+A256KW",
@@ -200,16 +200,26 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
   end
 
-  describe ".encrypt" do
+  describe ".encrypt (deprecated forwarder)" do
+    it "delegates to StandardSingpass::Testing::EcdhJwe and warns" do
+      expect(StandardSingpass.deprecator).to receive(:warn).with(/Testing::EcdhJwe\.encrypt/)
+
+      jwe = described_class.encrypt(payload, public_key: ec_key, alg: "ECDH-ES+A256KW", enc: "A256GCM", kid: "k")
+
+      expect(described_class.decrypt(jwe, private_key: ec_key)).to eq(payload)
+    end
+  end
+
+  describe "Testing::EcdhJwe.encrypt" do
     it "raises InvalidAlgorithm for unsupported alg" do
       expect {
-        described_class.encrypt(payload, public_key: ec_key, alg: "RSA-OAEP", enc: "A256GCM")
+        StandardSingpass::Testing::EcdhJwe.encrypt(payload, public_key: ec_key, alg: "RSA-OAEP", enc: "A256GCM")
       }.to raise_error(described_class::InvalidAlgorithm, /Unsupported alg/)
     end
 
     it "raises InvalidAlgorithm for unsupported enc" do
       expect {
-        described_class.encrypt(payload, public_key: ec_key, alg: "ECDH-ES+A256KW", enc: "A192GCM")
+        StandardSingpass::Testing::EcdhJwe.encrypt(payload, public_key: ec_key, alg: "ECDH-ES+A256KW", enc: "A192GCM")
       }.to raise_error(described_class::InvalidAlgorithm, /Unsupported enc/)
     end
   end
