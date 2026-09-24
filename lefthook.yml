@@ -12,6 +12,7 @@ pre-push:
       run: .lefthook/verify-signatures.sh
     rubocop:
       run: bin/rubocop
+      glob: "**/*.rb"
     brakeman:
       run: bundle exec brakeman --no-pager --force
     # Runs tests with --fail-fast for quick feedback. Use LEFTHOOK=0 git push to skip.

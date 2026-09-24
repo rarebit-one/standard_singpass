@@ -21,7 +21,7 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = ">= 4.0"
 
-  spec.add_dependency "rails", ">= 8.0", "< 9"
+  spec.add_dependency "rails", ">= 8.1", "< 9"
   spec.add_dependency "faraday", ">= 2.0", "< 3"
   spec.add_dependency "jwt", ">= 2.7", "< 4"
   spec.add_dependency "aes_key_wrap", "~> 1.1"
