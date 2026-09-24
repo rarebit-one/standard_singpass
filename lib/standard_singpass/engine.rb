@@ -6,9 +6,11 @@
 # only meaningful inside a Rails host anyway.
 if defined?(::Rails::Engine)
   module StandardSingpass
+    # Library-only engine: no routes, models, controllers, or views, so no
+    # `isolate_namespace` (dropped in 0.4.0 — it only matters for engines
+    # that ship app/ code or mountable routes). It exists for the rake tasks
+    # and the boot-time hooks below.
     class Engine < ::Rails::Engine
-      isolate_namespace StandardSingpass
-
       initializer "standard_singpass.deprecator" do |app|
         app.deprecators[:standard_singpass] = StandardSingpass.deprecator if app.respond_to?(:deprecators)
       end

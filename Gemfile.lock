@@ -3,9 +3,9 @@ PATH
   specs:
     standard_singpass (0.3.1)
       aes_key_wrap (~> 1.1)
-      faraday (>= 2.0)
-      jwt (>= 2.7)
-      rails (>= 8.0)
+      faraday (>= 2.0, < 3)
+      jwt (>= 2.7, < 4)
+      rails (>= 8.0, < 9)
       sorbet-runtime (~> 0.5)
 
 GEM

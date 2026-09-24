@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dependency upper bounds:** `rails >= 8.0, < 9`, `faraday >= 2.0, < 3`, `jwt >= 2.7, < 4`. Each next major is a real API break for code the gem depends on (`JWT::JWK`, Faraday connection options, Rails engine hooks) and should be adopted deliberately rather than resolved into silently. The consuming app's current versions (Rails 8.1, Faraday 2.14, jwt 3.3) are all inside the ranges.
+- **Gem packaging:** `spec.files` no longer globs `app/`, `config/`, or `db/` (the gem has none), and the engine drops `isolate_namespace` — it has no routes, models, controllers, or views, so namespace isolation did nothing. Hosts never mounted it, so nothing changes for them.
+
 - **Behaviour change: `ECDH-ES+A128KW` is no longer accepted.** `EcdhJwe::SUPPORTED_ALGS` is now `["ECDH-ES+A256KW"]` — the only alg the gem publishes on its encryption JWKs (`Myinfo.public_jwks`) and the one FAPI 2.0 Singpass uses. An A128KW JWE now raises `DecryptionError` ("Unsupported JWE alg") instead of decrypting. Nothing legitimate sends it to us, so accepting it was pure attack surface; hosts should see no difference.
 
 - **`EcdhJwe.encrypt` moved to `StandardSingpass::Testing::EcdhJwe.encrypt`** (`require "standard_singpass/testing"`, not loaded by default). Encryption is only ever needed to build test fixtures — Singpass encrypts, the gem decrypts — so it no longer ships in the runtime load path. `StandardSingpass::Myinfo::EcdhJwe.encrypt` remains as a deprecated forwarder (same signature) that warns through the new `StandardSingpass.deprecator` — registered with `Rails.application.deprecators[:standard_singpass]` — and will be removed in a future minor.
