@@ -153,8 +153,9 @@ run `srb tc`. RBIs for the gem's own runtime deps are committed under
 
 All errors descend from `StandardSingpass::Myinfo::Error`, which descends
 from the gem-wide `StandardSingpass::Error`. `Security` raises these public
-classes directly; `Security::DecryptionError` / `Security::ValidationError`
-are deprecated aliases of `DecryptionError` / `SignatureError`.
+classes directly. The pre-0.4.0 `Security::DecryptionError` /
+`Security::ValidationError` aliases were removed in 0.5.0 (referencing them
+raises `NameError`); rescue `DecryptionError` / `SignatureError`.
 
 | Class                  | Meaning                                                |
 |------------------------|--------------------------------------------------------|
