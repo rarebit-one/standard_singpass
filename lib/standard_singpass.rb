@@ -25,7 +25,7 @@ module StandardSingpass
     # with the host's `Rails.application.deprecators` by the engine, so the
     # host's deprecation behaviour (log / raise / silence) applies.
     def deprecator
-      @deprecator ||= ActiveSupport::Deprecation.new("0.5", "StandardSingpass")
+      @deprecator ||= ActiveSupport::Deprecation.new("0.6", "StandardSingpass")
     end
   end
 end

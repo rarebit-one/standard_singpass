@@ -202,13 +202,9 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
     end
   end
 
-  describe ".encrypt (deprecated forwarder)" do
-    it "delegates to StandardSingpass::Testing::EcdhJwe and warns" do
-      expect(StandardSingpass.deprecator).to receive(:warn).with(/Testing::EcdhJwe\.encrypt/)
-
-      jwe = described_class.encrypt(payload, public_key: ec_key, alg: "ECDH-ES+A256KW", enc: "A256GCM", kid: "k")
-
-      expect(described_class.decrypt(jwe, private_key: ec_key)).to eq(payload)
+  describe ".encrypt" do
+    it "was removed in 0.5 (use StandardSingpass::Testing::EcdhJwe.encrypt)" do
+      expect(described_class).not_to respond_to(:encrypt)
     end
   end
 

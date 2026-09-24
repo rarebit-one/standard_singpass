@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-24
+
+**Breaking.** Removes everything 0.4.0 deprecated. No other behaviour changes.
+
+### Removed
+
+- **`StandardSingpass::Myinfo::Security::DecryptionError` / `Security::ValidationError`.** These were aliases of `StandardSingpass::Myinfo::DecryptionError` / `SignatureError`, which `Security` has raised directly since 0.4.0. Referencing the old names now raises `NameError`. Rescue `DecryptionError` / `SignatureError`, or the `StandardSingpass::Myinfo::Error` base.
+- **`StandardSingpass::Myinfo::EcdhJwe.encrypt`**, the forwarder. Use `require "standard_singpass/testing"` and `StandardSingpass::Testing::EcdhJwe.encrypt` (same signature). `EcdhJwe.decrypt` is unchanged.
+- **`StandardSingpass::Myinfo::TestPersonas.reload!`**. Personas are read once per process. Restart, or point `personas_path` at a different file.
+
+### Changed
+
+- `StandardSingpass.deprecator`'s horizon is now `0.6`.
+
+### Upgrade notes
+
+- **No code change required in the one consumer, fundbright-web.** Grepped `origin/main` on 2026-09-24: no reference to `Security::DecryptionError`, `Security::ValidationError`, `EcdhJwe.encrypt` or `TestPersonas.reload!`.
+- Regenerate the gem RBI when bumping (`bin/tapioca gem standard_singpass`). `sorbet/rbi/gems/standard_singpass@0.4.0.rbi` still declares the removed constants and methods.
+
 ## [0.4.0] - 2026-09-24
 
 ### Upgrading from 0.3.x
