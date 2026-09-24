@@ -13,9 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two more bundled test personas** in `fixtures/myinfo-personas.json`, upstreamed from the consuming app's own fixture set: `work_permit_holder` (FIN holder on a Work Permit / `RPass`) and `duplicate_check` (a stable NRIC for exercising duplicate-application paths). The existing personas are unchanged.
+
 - **`ActiveSupport::Notifications` instrumentation.** `standard_singpass.par`, `standard_singpass.token`, and `standard_singpass.userinfo` wrap each leg of the flow with a payload of `duration` (ms), `status`, `error` (class name only), `transport`, and — for userinfo — `attempts`; `standard_singpass.retry` fires on each automatic userinfo retry with `leg`, `attempt`, `status`, `error`, and `delay`. Payloads are PII-free by construction: no tokens, codes, bodies, URLs, or error messages (the error is captured and re-raised outside the instrument block, so ActiveSupport's message-bearing `:exception` keys are never added). See README → Instrumentation.
 
 - **`StandardSingpass.configure` / `StandardSingpass.config`** — top-level aliases for `StandardSingpass::Myinfo.configure` / `.configuration`, matching the sibling `standard_*` gems' `Gem.configure` / `Gem.config` convention. `StandardSingpass::Myinfo.config` is also available. The existing `Myinfo.configure` / `Myinfo.configuration` entry points are unchanged.
+
+### Deprecated
+
+- **`TestPersonas.reload!`** — unused by any consumer; now warns via `StandardSingpass.deprecator` and will be removed in a future minor.
 
 ### Changed
 

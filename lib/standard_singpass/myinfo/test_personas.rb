@@ -31,9 +31,14 @@ module StandardSingpass
         @data ||= JSON.parse(fixture_path.read).freeze
       end
 
-      # Test-only — call from a spec `before(:suite)` if you want to pick up
-      # mid-run edits to the fixture file.
+      # Deprecated (0.4.0) — unused by any consumer, and will be removed in a
+      # future minor release. Personas are read once per process; restart the
+      # process (or point `personas_path` at a different file) to pick up
+      # edits.
       def self.reload!
+        StandardSingpass.deprecator.warn(
+          "StandardSingpass::Myinfo::TestPersonas.reload! is deprecated and will be removed."
+        )
         @data = nil
         data
       end
