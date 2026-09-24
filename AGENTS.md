@@ -204,7 +204,7 @@ misconfiguration, but a JWKS-host outage also surfaces as `SignatureError`
 
 ## Dependencies
 
-- **rails** — `>= 8.0, < 9`
+- **rails** — `>= 8.1, < 9`
 - **faraday** — `>= 2.0, < 3` (HTTP client)
 - **jwt** — `>= 2.7, < 4` (JWS/JWT signing + verification)
 - **aes_key_wrap** — `~> 1.1` (RFC 3394, used by ECDH-ES+A256KW)
