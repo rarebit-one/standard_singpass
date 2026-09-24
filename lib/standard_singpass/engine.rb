@@ -13,10 +13,14 @@ if defined?(::Rails::Engine)
         load File.expand_path("../tasks/standard_singpass.rake", __dir__)
       end
 
-      # Runs after the host's own initializers, so `config.mock_mode` has
-      # been set by the time it is read. Inert unless mock mode is on.
+      # Runs after the host's own initializers (and its `to_prepare`
+      # blocks), so the whole configure block has run by the time either is
+      # read. The guard is inert unless mock mode is on; resolving the
+      # private JWKS here surfaces missing/malformed-key warnings at boot
+      # rather than on the first Singpass request.
       config.after_initialize do
         StandardSingpass::Myinfo::MockModeGuard.check!
+        StandardSingpass::Myinfo.configuration.resolve_private_jwks!
       end
     end
   end

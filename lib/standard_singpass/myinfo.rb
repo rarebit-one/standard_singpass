@@ -59,8 +59,7 @@ module StandardSingpass
             exported[:alg] = "ES256"
             keys << exported
           rescue OpenSSL::PKey::PKeyError => e
-            Rails.logger.error("StandardSingpass::Myinfo: failed to load signing key: #{e.message}")
-            Rails.error.report(e, handled: true, context: { component: "StandardSingpass::Myinfo", reason: "build_public_jwks_signing", kid: c.signing_kid })
+            log_and_report(e, "failed to load signing key: #{e.message}", reason: "build_public_jwks_signing", kid: c.signing_kid)
           end
         end
 
@@ -72,11 +71,16 @@ module StandardSingpass
           exported[:alg] = "ECDH-ES+A256KW"
           keys << exported
         rescue OpenSSL::PKey::PKeyError => e
-          Rails.logger.error("StandardSingpass::Myinfo: failed to load encryption key #{enc_key_config[:kid]}: #{e.message}")
-          Rails.error.report(e, handled: true, context: { component: "StandardSingpass::Myinfo", reason: "build_public_jwks_encryption", kid: enc_key_config[:kid] })
+          log_and_report(e, "failed to load encryption key #{enc_key_config[:kid]}: #{e.message}", reason: "build_public_jwks_encryption", kid: enc_key_config[:kid])
         end
 
         { keys: }
+      end
+
+      def log_and_report(error, message, reason:, kid:)
+        return unless defined?(::Rails)
+        ::Rails.logger&.error("StandardSingpass::Myinfo: #{message}") if ::Rails.respond_to?(:logger)
+        ::Rails.error.report(error, handled: true, context: { component: "StandardSingpass::Myinfo", reason:, kid: }) if ::Rails.respond_to?(:error)
       end
     end
   end

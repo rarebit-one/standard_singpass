@@ -80,7 +80,7 @@ StandardSingpass::Myinfo.configure do |c|
   # c.network_wrapper = ->(&block) { StandardCircuit.run(:myinfo, &block) }
 
   # Required: full JWKS JSON containing both sig (ES256) and enc
-  # (ECDH-ES+A256KW) keys with the private scalar `d`. Set last so any
-  # missing-key warnings the gem logs include the rest of the context.
+  # (ECDH-ES+A256KW) keys with the private scalar `d`. Parsed lazily (at the
+  # end of boot, or on first use), so it can be assigned in any order.
   c.private_jwks_json = ENV["MYINFO_PRIVATE_JWKS"]
 end
