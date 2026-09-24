@@ -51,7 +51,7 @@ standard_singpass/
 │   ├── version.rb
 │   ├── myinfo.rb                       # Top-level configure / public_jwks
 │   └── myinfo/
-│       ├── configuration.rb            # Block-style config object + DEFAULT_SCOPE
+│       ├── configuration.rb            # Block-style config object (minimal DEFAULT_SCOPE)
 │       ├── client.rb                   # FAPI 2.0 OAuth client (PAR + token + userinfo)
 │       ├── security.rb                 # PKCE, DPoP, JWE dispatch, JWS validation
 │       ├── ecdh_jwe.rb                 # Native ECDH-ES key agreement + JWE codec

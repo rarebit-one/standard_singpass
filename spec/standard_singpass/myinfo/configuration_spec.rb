@@ -39,6 +39,20 @@ RSpec.describe StandardSingpass::Myinfo::Configuration do
     end
   end
 
+  describe "scope" do
+    # 0.4.0: the default used to be one consuming app's 42-entry underwriting
+    # scope (including the NOA scopes Singpass review flagged). The gem holds
+    # no domain policy, so the default is now the minimal identity set.
+    it "defaults to the minimal identity scope" do
+      expect(described_class.new.scope).to eq("openid uinfin name")
+      expect(described_class::DEFAULT_SCOPE).to eq("openid uinfin name")
+    end
+
+    it "does not request any NOA scope by default" do
+      expect(described_class.new.scope.split).not_to include("noa", "noa-basic", "noahistory", "noahistory-basic")
+    end
+  end
+
   describe "#private_jwks_json=" do
     it "populates signing_key, signing_kid, and encryption_keys from a valid JWKS" do
       c = described_class.new

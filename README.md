@@ -33,10 +33,11 @@ StandardSingpass::Myinfo.configure do |c|
   c.client_id        = ENV["MYINFO_CLIENT_ID"]
   c.redirect_url     = ENV["MYINFO_REDIRECT_URL"]
 
-  # Optional: override default scope (defaults to 42 scopes — `openid` plus 41
-  # MyInfo attributes covering identity, contact, income, employment, housing,
-  # assets, vehicles).
-  # c.scope = "openid name email ..."
+  # MyInfo scope: set it explicitly to the attributes approved for your app
+  # on the Singpass developer portal. The gem's default is only the minimal
+  # identity set ("openid uinfin name"); which attributes you collect is a
+  # host decision (PDPA Purpose Limitation), not the gem's.
+  c.scope = "openid uinfin name email mobileno regadd"
 
   # Required: full private JWKS JSON containing both sig (ES256) and enc
   # (ECDH-ES+A256KW) keys with the private scalar `d`.

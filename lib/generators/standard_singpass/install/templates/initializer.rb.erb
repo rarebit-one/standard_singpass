@@ -13,7 +13,7 @@
 #
 # Optional environment variables:
 #
-#   MYINFO_SCOPE             Space-separated scopes (defaults to DEFAULT_SCOPE)
+#   MYINFO_SCOPE             Space-separated scopes (overrides the list below)
 #   MYINFO_USERINFO_URL      Userinfo endpoint override (rarely needed)
 #   MYINFO_USERINFO_JWKS_URL Userinfo JWKS endpoint override (rarely needed)
 #   MYINFO_MOCK_MODE         When set, suppresses missing-key warnings and
@@ -31,7 +31,19 @@ StandardSingpass::Myinfo.configure do |c|
   c.client_id    = ENV["MYINFO_CLIENT_ID"]
   c.redirect_url = ENV["MYINFO_REDIRECT_URL"]
 
-  c.scope = ENV.fetch("MYINFO_SCOPE", StandardSingpass::Myinfo::Configuration::DEFAULT_SCOPE)
+  # MyInfo scope — set this explicitly. It must match (or be a subset of) the
+  # attributes approved for your app on the Singpass developer portal, and
+  # which attributes you collect is your decision to justify under PDPA
+  # (Purpose Limitation). The gem's own default is only the minimal identity
+  # set ("openid uinfin name"). One scope per line keeps diffs against the
+  # portal's approval list reviewable.
+  app_scope = %w[
+    openid
+    uinfin
+    name
+  ].join(" ").freeze
+
+  c.scope = ENV.fetch("MYINFO_SCOPE", app_scope)
 
   # Endpoint overrides — only set if you're running against a non-standard
   # Singpass sandbox or mocked service.

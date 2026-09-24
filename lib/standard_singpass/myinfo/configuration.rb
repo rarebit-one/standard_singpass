@@ -13,7 +13,9 @@
 #                          (keys are identified by "use": "sig" and "use": "enc")
 #
 # Optional attributes:
-#   c.scope                  - Space-separated scopes (defaults to DEFAULT_SCOPE)
+#   c.scope                  - Space-separated scopes. Defaults to the minimal
+#                              DEFAULT_SCOPE ("openid uinfin name"); every
+#                              real host should set its own approved list.
 #   c.minimum_acr            - Minimum Authentication Context Class Reference URN
 #                              (e.g. urn:singpass:authentication:loa:3) checked
 #                              client-side against the id_token `acr` claim.
@@ -33,79 +35,25 @@
 module StandardSingpass
   module Myinfo
     class Configuration
-      # Default MyInfo scope — keep aligned with the Singpass developer-portal
-      # approval list. Entries on separate lines so diffs against the portal's
-      # ordered dump are reviewable line-by-line. Joined into a single
-      # space-delimited string before sending to PAR.
-      DEFAULT_SCOPE = %w[
-        openid
-        aliasname
-        cpfbalances.oa
-        cpfcontributions
-        cpfemployers
-        cpfhousingwithdrawal
-        dob
-        email
-        employment
-        employmentsector
-        hanyupinyinaliasname
-        hanyupinyinname
-        hdbownership.address
-        hdbownership.balanceloanrepayment
-        hdbownership.hdbtype
-        hdbownership.loangranted
-        hdbownership.monthlyloaninstalment
-        hdbownership.noofowners
-        hdbownership.outstandinginstalment
-        hdbownership.outstandingloanbalance
-        hdbtype
-        housingtype
-        marital
-        marriedname
-        mobileno
-        name
-        nationality
-        noa
-        noa-basic
-        noahistory
-        noahistory-basic
-        occupation
-        ownerprivate
-        passexpirydate
-        passstatus
-        passtype
-        race
-        regadd
-        residentialstatus
-        sex
-        uinfin
-        vehicles.effectiveownership
-      ].join(" ").freeze
-
-      # The categories and their lender-underwriting purpose (PDPA §18,
-      # Purpose Limitation):
+      # Default MyInfo scope: the minimal identity set (`openid` plus the
+      # NRIC/FIN and name). Deliberately tiny.
       #
-      #   Identity        — uinfin, name, alias names, dob, sex, race,
-      #                     nationality, residentialstatus → KYC, contracts
-      #   Pass (FIN-only) — passtype, passstatus, passexpirydate,
-      #                     employmentsector → tenure-vs-pass-expiry, eligibility
-      #   Address         — regadd, hdbtype, housingtype → KYC + income proxy
-      #   Contact         — mobileno, email → OTP, mailers
-      #   Family          — marital → soft underwriting signal
-      #   Income          — noa, noa-basic, noahistory, noahistory-basic,
-      #                     cpfcontributions → MAS TDSR input
-      #   Employment      — employment, occupation, cpfemployers
-      #                     → continuity + employer stability
-      #   Assets          — cpfbalances.oa (only OA — MA/SA/RA are ring-fenced
-      #                     and not lender-relevant), ownerprivate
-      #   Liabilities     — cpfhousingwithdrawal, hdbownership.* (8 sub-fields)
-      #                     → TDSR housing component
-      #   Vehicle         — vehicles.effectiveownership (asset/liability hint;
-      #                     full vehicle details deliberately not requested)
+      # Which person attributes to request is a business decision (PDPA §18,
+      # Purpose Limitation) that must match the host's Singpass
+      # developer-portal approval list, so it belongs to the host, not this
+      # gem. Until 0.4.0 this constant was one consuming app's 42-entry
+      # underwriting scope — including `noa`, `noa-basic` and
+      # `noahistory-basic`, which Singpass review later flagged as redundant
+      # collection — and any host that relied on the default silently
+      # requested all of it.
       #
-      # `cpfbalances.oa`, `hdbownership.*`, and `vehicles.effectiveownership`
-      # use FAPI 2.0 sub-attribute scope notation — sharper data minimisation
-      # than parent-keyword grants.
+      # A minimal default rather than a boot-time "scope is required" error:
+      # `openid uinfin name` is a subset of every MyInfo approval, so a host
+      # that forgets to set `scope` gets a working flow that collects the
+      # least data possible, instead of either over-collecting (the old
+      # default) or failing to boot in development and test. Hosts set
+      # `c.scope` explicitly; the install generator does.
+      DEFAULT_SCOPE = "openid uinfin name"
 
       PRODUCTION_ENDPOINTS = {
         authorize_url:     "https://id.singpass.gov.sg/fapi/auth",

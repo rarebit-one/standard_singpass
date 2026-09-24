@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `Configuration::DEFAULT_SCOPE` is now the minimal `"openid uinfin name"`.** It used to be one consuming app's 42-entry underwriting scope — including `noa`, `noa-basic` and `noahistory-basic`, which Singpass review flagged as redundant collection — so any host that never set `c.scope` silently requested all of it. Which attributes to collect is a host decision (PDPA Purpose Limitation) that must match the host's own developer-portal approval list, and the gem holds no domain policy. A minimal default was chosen over a "scope is required" boot error because `openid uinfin name` is a subset of every MyInfo approval: a host that forgets to set it gets a working flow that collects the least data possible, rather than over-collecting or failing to boot in development and test. The install generator now sets `c.scope` explicitly.
+
+  **Upgrade note:** if you relied on the old default, set `c.scope` to your approved list before upgrading — otherwise `PersonDataParser` fields outside `uinfin`/`name` come back `nil`. The 0.3.1 list is in [`configuration.rb` at v0.3.1](https://github.com/rarebit-one/standard_singpass/blob/v0.3.1/lib/standard_singpass/myinfo/configuration.rb) for reference (drop the NOA entries your approval does not cover). Hosts that already set `c.scope` are unaffected.
+
 ## [0.3.1] - 2026-09-24
 
 ### Fixed
