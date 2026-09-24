@@ -57,17 +57,19 @@ RSpec.describe StandardSingpass::Myinfo::EcdhJwe do
       expect(result).to eq(payload)
     end
 
-    it "round-trips with ECDH-ES+A128KW / A256GCM" do
-      jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
-        payload,
-        public_key: ec_key,
-        alg: "ECDH-ES+A128KW",
-        enc: "A256GCM",
-        kid: "key-1"
-      )
+    # 0.4.0: we only publish ECDH-ES+A256KW encryption keys, so A128KW is
+    # rejected on decrypt (and the test encryptor refuses to produce it).
+    it "rejects ECDH-ES+A128KW" do
+      header = Base64.urlsafe_encode64({ "alg" => "ECDH-ES+A128KW", "enc" => "A256GCM", "epk" => {} }.to_json, padding: false)
+      jwe = "#{header}.fake.fake.fake.fake"
 
-      result = described_class.decrypt(jwe, private_key: ec_key)
-      expect(result).to eq(payload)
+      expect {
+        described_class.decrypt(jwe, private_key: ec_key)
+      }.to raise_error(described_class::InvalidAlgorithm, /Unsupported alg/)
+
+      expect {
+        StandardSingpass::Testing::EcdhJwe.encrypt(payload, public_key: ec_key, alg: "ECDH-ES+A128KW", enc: "A256GCM")
+      }.to raise_error(described_class::InvalidAlgorithm)
     end
 
     it "round-trips with apu and apv" do

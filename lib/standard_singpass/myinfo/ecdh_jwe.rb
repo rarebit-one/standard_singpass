@@ -21,12 +21,15 @@ module StandardSingpass
       class DecryptionFailed < StandardError; end
       class InvalidAlgorithm < StandardError; end
 
-      SUPPORTED_ALGS = T.let(%w[ECDH-ES+A128KW ECDH-ES+A256KW].freeze, T::Array[String])
+      # Only ECDH-ES+A256KW: it is the one alg we publish on our encryption
+      # JWKs (see Myinfo.public_jwks) and the one FAPI 2.0 / Singpass uses.
+      # ECDH-ES+A128KW was accepted until 0.4.0; nothing legitimate sends it
+      # to us, so accepting it was pure attack surface.
+      SUPPORTED_ALGS = T.let(%w[ECDH-ES+A256KW].freeze, T::Array[String])
       SUPPORTED_ENCS = T.let(%w[A128CBC-HS256 A256CBC-HS512 A128GCM A256GCM].freeze, T::Array[String])
 
       # Key wrap key sizes (in bytes) for each alg
       KEK_SIZES = T.let({
-        "ECDH-ES+A128KW" => 16,
         "ECDH-ES+A256KW" => 32
       }.freeze, T::Hash[String, Integer])
 

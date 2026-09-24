@@ -328,6 +328,14 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /Unsupported JWE alg.*FAPI 2\.0 requires/)
     end
 
+    it "rejects ECDH-ES+A128KW (only A256KW is published)" do
+      header = Base64.urlsafe_encode64({ "alg" => "ECDH-ES+A128KW", "enc" => "A256GCM", "kid" => "key-1" }.to_json, padding: false)
+
+      expect {
+        described_class.decrypt_jwe("#{header}.fake.fake.fake.fake", private_keys: [{ kid: "key-1", key: ec_key_1 }])
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /Unsupported JWE alg/)
+    end
+
     it "raises the public DecryptionError (not a bare EcdhJwe error) for an unsupported enc" do
       header = Base64.urlsafe_encode64({ "alg" => "ECDH-ES+A256KW", "enc" => "A192GCM", "kid" => "key-1" }.to_json, padding: false)
       jwe_string = "#{header}.fake.fake.fake.fake"
