@@ -32,6 +32,7 @@ module StandardSingpass
       def configuration
         @configuration ||= Configuration.new
       end
+      alias_method :config, :configuration
 
       def reset_configuration!
         @configuration = Configuration.new
