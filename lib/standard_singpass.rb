@@ -3,4 +3,29 @@ require "standard_singpass/engine"
 require "standard_singpass/myinfo"
 
 module StandardSingpass
+  class << self
+    # Top-level entry points matching the sibling `standard_*` gems'
+    # `Gem.configure` / `Gem.config` convention. Singpass MyInfo is the only
+    # product the gem integrates today, so both delegate to
+    # `StandardSingpass::Myinfo` — `configure` goes through
+    # `Myinfo.configure` so the derived public-JWKS cache is still reset.
+    #
+    #   StandardSingpass.configure { |c| c.client_id = "..." }
+    #   StandardSingpass.config.client_id
+    def configure(&block)
+      Myinfo.configure(&block)
+      config
+    end
+
+    def config
+      Myinfo.configuration
+    end
+
+    # Deprecation warnings for the gem's own deprecated APIs. Registered
+    # with the host's `Rails.application.deprecators` by the engine, so the
+    # host's deprecation behaviour (log / raise / silence) applies.
+    def deprecator
+      @deprecator ||= ActiveSupport::Deprecation.new("0.5", "StandardSingpass")
+    end
+  end
 end

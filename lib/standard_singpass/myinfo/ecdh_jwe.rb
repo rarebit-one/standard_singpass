@@ -2,7 +2,9 @@
 
 module StandardSingpass
   module Myinfo
-    # Native ECDH-ES+A256KW JWE implementation for decryption.
+    # Native ECDH-ES+A256KW JWE implementation for decryption. (The matching
+    # encryption side, needed only to build test fixtures, lives in
+    # `StandardSingpass::Testing::EcdhJwe`.)
     #
     # The `jwt` gem does not support ECDH-ES key agreement algorithms; this
     # service implements the subset needed for MyInfo (FAPI 2.0):
@@ -19,12 +21,15 @@ module StandardSingpass
       class DecryptionFailed < StandardError; end
       class InvalidAlgorithm < StandardError; end
 
-      SUPPORTED_ALGS = T.let(%w[ECDH-ES+A128KW ECDH-ES+A256KW].freeze, T::Array[String])
+      # Only ECDH-ES+A256KW: it is the one alg we publish on our encryption
+      # JWKs (see Myinfo.public_jwks) and the one FAPI 2.0 / Singpass uses.
+      # ECDH-ES+A128KW was accepted until 0.4.0; nothing legitimate sends it
+      # to us, so accepting it was pure attack surface.
+      SUPPORTED_ALGS = T.let(%w[ECDH-ES+A256KW].freeze, T::Array[String])
       SUPPORTED_ENCS = T.let(%w[A128CBC-HS256 A256CBC-HS512 A128GCM A256GCM].freeze, T::Array[String])
 
       # Key wrap key sizes (in bytes) for each alg
       KEK_SIZES = T.let({
-        "ECDH-ES+A128KW" => 16,
         "ECDH-ES+A256KW" => 32
       }.freeze, T::Hash[String, Integer])
 
@@ -36,7 +41,11 @@ module StandardSingpass
         "A256GCM" => 32
       }.freeze, T::Hash[String, Integer])
 
-      # Encrypts a payload and returns a compact-serialized JWE string.
+      # Deprecated (0.4.0): encryption is only ever needed to build fixtures
+      # in tests — Singpass encrypts, we decrypt. It lives in
+      # `StandardSingpass::Testing::EcdhJwe` now (`require
+      # "standard_singpass/testing"`); this forwarder will be removed in a
+      # future minor release.
       sig do
         params(
           payload: String,
@@ -49,45 +58,12 @@ module StandardSingpass
         ).returns(String)
       end
       def self.encrypt(payload, public_key:, alg:, enc:, kid: nil, apu: nil, apv: nil)
-        validate_algorithms!(alg, enc)
-
-        # Generate ephemeral key pair on same curve
-        group = public_key.group
-        ephemeral_key = OpenSSL::PKey::EC.generate(group.curve_name)
-
-        # ECDH key agreement
-        shared_secret = derive_shared_secret(ephemeral_key, public_key)
-
-        # Derive KEK via Concat KDF
-        kek_size = KEK_SIZES.fetch(alg)
-        kek = concat_kdf(shared_secret, alg, kek_size, apu:, apv:)
-
-        # Generate random CEK
-        cek_size = CEK_SIZES.fetch(enc)
-        cek = SecureRandom.random_bytes(cek_size)
-
-        # Wrap CEK with KEK
-        encrypted_key = AESKeyWrap.wrap(cek, kek)
-
-        # Build header
-        epk_jwk = ec_public_key_to_jwk(ephemeral_key)
-        header = { "alg" => alg, "enc" => enc, "epk" => epk_jwk }
-        header["kid"] = kid if kid
-        header["apu"] = Base64.urlsafe_encode64(apu, padding: false) if apu
-        header["apv"] = Base64.urlsafe_encode64(apv, padding: false) if apv
-
-        # Encrypt content
-        header_b64 = Base64.urlsafe_encode64(header.to_json, padding: false)
-        iv, ciphertext, auth_tag = encrypt_content(cek, enc, payload, header_b64)
-
-        # Assemble compact serialization
-        [
-          header_b64,
-          Base64.urlsafe_encode64(encrypted_key, padding: false),
-          Base64.urlsafe_encode64(T.must(iv), padding: false),
-          Base64.urlsafe_encode64(T.must(ciphertext), padding: false),
-          Base64.urlsafe_encode64(T.must(auth_tag), padding: false)
-        ].join(".")
+        StandardSingpass.deprecator.warn(
+          "StandardSingpass::Myinfo::EcdhJwe.encrypt is deprecated and will be removed; " \
+          "require \"standard_singpass/testing\" and use StandardSingpass::Testing::EcdhJwe.encrypt instead."
+        )
+        require "standard_singpass/testing"
+        StandardSingpass::Testing::EcdhJwe.encrypt(payload, public_key:, alg:, enc:, kid:, apu:, apv:)
       end
 
       # Decrypts a compact-serialized JWE string.
@@ -171,38 +147,6 @@ module StandardSingpass
           digest[0, key_length]
         end
 
-        # Converts an OpenSSL EC key to a JWK hash (public components only).
-        sig { params(ec_key: OpenSSL::PKey::EC).returns(T::Hash[String, String]) }
-        def ec_public_key_to_jwk(ec_key)
-          # Get the public key point
-          point = ec_key.public_key
-          group = ec_key.group
-
-          # Determine curve name for JWK
-          crv = case group.curve_name
-          when "prime256v1" then "P-256"
-          when "secp384r1" then "P-384"
-          when "secp521r1" then "P-521"
-          else raise InvalidAlgorithm, "Unsupported curve: #{group.curve_name}"
-          end
-
-          # Get uncompressed point bytes (0x04 || x || y)
-          bn = point.to_bn(:uncompressed)
-          uncompressed = bn.to_s(2)
-
-          # Skip the 0x04 prefix byte
-          coord_length = (uncompressed.bytesize - 1) / 2
-          x = uncompressed[1, coord_length]
-          y = uncompressed[1 + coord_length, coord_length]
-
-          {
-            "kty" => "EC",
-            "crv" => crv,
-            "x" => Base64.urlsafe_encode64(x, padding: false),
-            "y" => Base64.urlsafe_encode64(y, padding: false)
-          }
-        end
-
         # Reconstructs an EC public key from a JWK hash.
         sig { params(jwk: T::Hash[String, T.untyped]).returns(OpenSSL::PKey::EC) }
         def jwk_to_ec_public_key(jwk)
@@ -229,18 +173,6 @@ module StandardSingpass
                     OpenSSL::ASN1::BitString.new(point.to_octet_string(:uncompressed))]
           asn1 = OpenSSL::ASN1::Sequence.new(outer)
           OpenSSL::PKey::EC.new(asn1.to_der)
-        end
-
-        sig { params(cek: String, enc: String, plaintext: String, aad: String).returns(T::Array[String]) }
-        def encrypt_content(cek, enc, plaintext, aad)
-          case enc
-          when "A128GCM", "A256GCM"
-            encrypt_gcm(cek, plaintext, aad, enc)
-          when "A128CBC-HS256", "A256CBC-HS512"
-            encrypt_cbc(cek, plaintext, aad, enc)
-          else
-            raise InvalidAlgorithm, "Unsupported enc: #{enc}"
-          end
         end
 
         sig { params(cek: String, enc: String, ciphertext: String, iv: String, auth_tag: String, aad: String).returns(String) }
@@ -270,18 +202,6 @@ module StandardSingpass
           enc == "A128CBC-HS256" ? "SHA256" : "SHA512"
         end
 
-        sig { params(cek: String, plaintext: String, aad: String, enc: String).returns(T::Array[String]) }
-        def encrypt_gcm(cek, plaintext, aad, enc)
-          cipher = OpenSSL::Cipher.new(gcm_cipher_name(enc))
-          cipher.encrypt
-          cipher.key = cek
-          iv = cipher.random_iv
-          cipher.auth_data = aad
-          ciphertext = cipher.update(plaintext) + cipher.final
-          auth_tag = cipher.auth_tag
-          [iv, ciphertext, auth_tag]
-        end
-
         sig { params(cek: String, ciphertext: String, iv: String, auth_tag: String, aad: String, enc: String).returns(String) }
         def decrypt_gcm(cek, ciphertext, iv, auth_tag, aad, enc)
           raise DecryptionFailed, "Invalid authentication tag" if auth_tag.bytesize < 16
@@ -295,28 +215,6 @@ module StandardSingpass
           cipher.update(ciphertext) + cipher.final
         rescue OpenSSL::Cipher::CipherError
           raise DecryptionFailed, "Content decryption failed"
-        end
-
-        sig { params(cek: String, plaintext: String, aad: String, enc: String).returns(T::Array[String]) }
-        def encrypt_cbc(cek, plaintext, aad, enc)
-          mac_key_len = cek.bytesize / 2
-          mac_key = cek[0, mac_key_len]
-          enc_key = cek[mac_key_len, mac_key_len]
-
-          cipher = OpenSSL::Cipher.new(cbc_cipher_name(enc))
-          cipher.encrypt
-          cipher.key = T.must(enc_key)
-          iv = cipher.random_iv
-          ciphertext = cipher.update(plaintext) + cipher.final
-
-          # Compute authentication tag (HMAC over AAD || IV || ciphertext || AL)
-          al = [aad.bytesize * 8].pack("Q>")
-          hmac_input = aad + iv + ciphertext + al
-          hmac = OpenSSL::HMAC.digest(cbc_hmac_digest(enc), T.must(mac_key), hmac_input)
-          tag_len = mac_key_len  # half of HMAC output
-          auth_tag = hmac[0, tag_len]
-
-          [iv, ciphertext, auth_tag]
         end
 
         sig { params(cek: String, ciphertext: String, iv: String, auth_tag: String, aad: String, enc: String).returns(String) }

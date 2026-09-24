@@ -33,10 +33,11 @@ StandardSingpass::Myinfo.configure do |c|
   c.client_id        = ENV["MYINFO_CLIENT_ID"]
   c.redirect_url     = ENV["MYINFO_REDIRECT_URL"]
 
-  # Optional: override default scope (defaults to 42 scopes — `openid` plus 41
-  # MyInfo attributes covering identity, contact, income, employment, housing,
-  # assets, vehicles).
-  # c.scope = "openid name email ..."
+  # MyInfo scope: set it explicitly to the attributes approved for your app
+  # on the Singpass developer portal. The gem's default is only the minimal
+  # identity set ("openid uinfin name"); which attributes you collect is a
+  # host decision (PDPA Purpose Limitation), not the gem's.
+  c.scope = "openid uinfin name email mobileno regadd"
 
   # Required: full private JWKS JSON containing both sig (ES256) and enc
   # (ECDH-ES+A256KW) keys with the private scalar `d`.
@@ -63,6 +64,10 @@ StandardSingpass::Myinfo.configure do |c|
   # c.production_env_detector = -> { AppEnv.production? }
 end
 ```
+
+`StandardSingpass.configure` / `StandardSingpass.config` are equivalent top-level aliases, matching the other `standard_*` gems.
+
+`private_jwks_json` is parsed lazily — on first use, or at the end of boot (the engine resolves it from `after_initialize`, next to the mock-mode guard) — so assignments inside the block can come in any order.
 
 ## Assurance level (`minimum_acr`)
 
@@ -200,7 +205,7 @@ render json: StandardSingpass::Myinfo.public_jwks
 
 ## Error classes
 
-All errors descend from `StandardSingpass::Myinfo::Error`:
+All errors descend from `StandardSingpass::Myinfo::Error`, which in turn descends from the gem-wide `StandardSingpass::Error`:
 
 - `AuthenticationError` — ID token or token exchange rejected
 - `ApiError` — endpoint reachable but returned a non-2xx response
@@ -209,6 +214,8 @@ All errors descend from `StandardSingpass::Myinfo::Error`:
 - `SignatureError` — JWS verification failed
 - `RateLimitError` — Singpass returned HTTP 429
 - `ConfigurationError` — gem is misconfigured (e.g. invalid ACR URN)
+
+`Security` raises `DecryptionError` / `SignatureError` directly. The pre-0.4.0 `Security::DecryptionError` / `Security::ValidationError` constants are deprecated aliases of those two classes.
 
 `DecryptionError` and `SignatureError` usually indicate a key/cert misconfiguration rather than an upstream outage. **Usually, not always:** verifying a signature requires fetching Singpass's JWKS, so a JWKS host that is down surfaces as a `SignatureError` (or an `AuthenticationError` on the ID-token leg) too. Those carry the JWKS response's `status` / `transport?`, so ask `FailureClassifier` rather than deciding by class — including when choosing what to feed a circuit breaker.
 
@@ -233,6 +240,69 @@ end
 This covers every leg — PAR, token exchange, userinfo, and the JWKS fetches that back signature verification. 502 is Singpass's documented signal that a MyInfo upstream agency (CPF Board, IRAS, MOM, …) is unavailable — returned both for genuine blips and throughout their [published maintenance windows](https://docs.developer.singpass.gov.sg/docs/products/singpass-myinfo/scheduled-downtimes); 503/504 are the generic equivalents. The list is `FailureClassifier::UPSTREAM_UNAVAILABLE_STATUSES`, and the client's automatic userinfo retry uses that same constant.
 
 **Never classify by matching the message text** — it is not a stable interface. That is exactly what `transport?` and `status` exist to replace.
+
+## Instrumentation
+
+The client emits [`ActiveSupport::Notifications`](https://api.rubyonrails.org/classes/ActiveSupport/Notifications.html) events, one per leg of the flow:
+
+| Event | When |
+| --- | --- |
+| `standard_singpass.par` | Pushed Authorization Request |
+| `standard_singpass.token` | Token exchange |
+| `standard_singpass.userinfo` | Userinfo fetch, decrypt, and verify (spans all retry attempts) |
+| `standard_singpass.retry` | Each automatic userinfo retry, just before the backoff sleep |
+
+`par` / `token` / `userinfo` payloads:
+
+- `duration` — wall time in milliseconds (Float)
+- `status` — HTTP status of the (last) Singpass response, or `nil` when none arrived
+- `error` — class name of the raised error, or `nil` on success (the error is re-raised as usual)
+- `transport` — `true` when Singpass was never reached
+- `attempts` — (`userinfo` only) attempts made, including retries
+
+`retry` payloads: `leg` (`:userinfo`), `attempt` (the attempt that failed), `status`, `error`, `delay` (seconds about to be slept).
+
+Payloads are deliberately PII-free: no tokens, authorization codes, response bodies, URLs, or error messages — only the class name. ActiveSupport's own `:exception` / `:exception_object` keys (which would carry the message) are not added.
+
+```ruby
+ActiveSupport::Notifications.subscribe(/\Astandard_singpass\./) do |event|
+  StatsD.distribution("singpass.#{event.name.delete_prefix("standard_singpass.")}",
+                      event.payload[:duration] || 0,
+                      tags: { status: event.payload[:status], error: event.payload[:error] })
+end
+```
+
+## Development and testing
+
+```sh
+bundle install
+bundle exec rspec          # full suite (boots spec/dummy, WebMock blocks outbound HTTP)
+bin/rubocop                # style
+bundle exec srb tc         # Sorbet typecheck — keep it green
+```
+
+`lefthook install` wires the pre-push checks (rubocop, brakeman, rspec, signed-commit verification).
+
+### Testing a host app against the gem
+
+- **Mock mode + personas.** Set `c.mock_mode = true` (never on production — see [Mock mode](#mock-mode)) and drive your mock callback with `StandardSingpass::Myinfo::TestPersonas.fetch(key)`, then `PersonDataParser.call(persona)`. Bundled keys: `default`, `self_employed`, `tamil_name`, `permanent_resident`, `sparse_data`, `fin_holder`, `work_permit_holder`, `error_paths`, `duplicate_check`. Point `c.personas_path` at your own JSON file to maintain your own set.
+- **End-to-end crypto.** To exercise the real decrypt + verify path, build the encrypted payloads Singpass would send with the test-only encryptor:
+
+  ```ruby
+  # spec/rails_helper.rb
+  require "standard_singpass/testing"
+
+  jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
+    signed_jws,
+    public_key: enc_key,          # OpenSSL::PKey::EC matching your "enc" JWK
+    alg: "ECDH-ES+A256KW",
+    enc: "A256GCM",
+    kid: "your-enc-kid"
+  )
+  ```
+
+  `standard_singpass/testing` is not loaded by `require "standard_singpass"`. The old `StandardSingpass::Myinfo::EcdhJwe.encrypt` still works but is deprecated.
+- **Specs that mutate configuration** should call `StandardSingpass::Myinfo.reset_configuration!` afterwards.
 
 ## License
 

@@ -231,7 +231,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
     let(:payload) { '{"sub":"S1234567A","name":"John Doe"}' }
 
     def build_jwe(payload, public_key, kid)
-      StandardSingpass::Myinfo::EcdhJwe.encrypt(
+      StandardSingpass::Testing::EcdhJwe.encrypt(
         payload,
         public_key:,
         alg: "ECDH-ES+A256KW",
@@ -271,7 +271,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
           jwe_string,
           private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
-      }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError, /No matching decryption key found/)
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /No matching decryption key found/)
     end
 
     it "raises DecryptionError when the wrong key is used" do
@@ -282,7 +282,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
           jwe_string,
           private_keys: [{ kid: "key-2", key: ec_key_2 }]
         )
-      }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError)
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError)
     end
 
     it "accepts PEM string keys" do
@@ -301,7 +301,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
           "not.a.valid.jwe.string",
           private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
-      }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError)
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError)
     end
 
     it "raises DecryptionError when JWE header is missing kid field" do
@@ -313,7 +313,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
           jwe_string,
           private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
-      }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError, /JWE header missing kid field/)
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /JWE header missing kid field/)
     end
 
     it "rejects non-FAPI-2.0 algs (e.g. RSA-OAEP)" do
@@ -325,7 +325,27 @@ RSpec.describe StandardSingpass::Myinfo::Security do
           jwe_string,
           private_keys: [{ kid: "key-1", key: ec_key_1 }]
         )
-      }.to raise_error(StandardSingpass::Myinfo::Security::DecryptionError, /Unsupported JWE alg.*FAPI 2\.0 requires/)
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /Unsupported JWE alg.*FAPI 2\.0 requires/)
+    end
+
+    it "rejects ECDH-ES+A128KW (only A256KW is published)" do
+      header = Base64.urlsafe_encode64({ "alg" => "ECDH-ES+A128KW", "enc" => "A256GCM", "kid" => "key-1" }.to_json, padding: false)
+
+      expect {
+        described_class.decrypt_jwe("#{header}.fake.fake.fake.fake", private_keys: [{ kid: "key-1", key: ec_key_1 }])
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /Unsupported JWE alg/)
+    end
+
+    it "raises the public DecryptionError (not a bare EcdhJwe error) for an unsupported enc" do
+      header = Base64.urlsafe_encode64({ "alg" => "ECDH-ES+A256KW", "enc" => "A192GCM", "kid" => "key-1" }.to_json, padding: false)
+      jwe_string = "#{header}.fake.fake.fake.fake"
+
+      expect {
+        described_class.decrypt_jwe(
+          jwe_string,
+          private_keys: [{ kid: "key-1", key: ec_key_1 }]
+        )
+      }.to raise_error(StandardSingpass::Myinfo::DecryptionError, /Unsupported JWE/)
     end
   end
 
@@ -370,7 +390,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /JWS validation failed/)
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError, /JWS validation failed/)
     end
 
     it "raises ValidationError when JWKS fetch fails" do
@@ -379,7 +399,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       jws = sign_jws(payload, ec_key, kid)
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /Failed to fetch JWKS/)
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError, /Failed to fetch JWKS/)
     end
 
     it "carries the JWKS endpoint's HTTP status, so an outage there is classifiable" do
@@ -388,7 +408,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       jws = sign_jws(payload, ec_key, kid)
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError) { |error|
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError) { |error|
         expect(error.status).to eq(503)
         expect(error.transport?).to be(false)
         expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
@@ -401,7 +421,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       jws = sign_jws(payload, ec_key, kid)
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError) { |error|
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError) { |error|
         expect(error.transport?).to be(true)
         expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
       }
@@ -413,7 +433,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       jws = sign_jws(payload, OpenSSL::PKey::EC.generate("prime256v1"), kid)
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError) { |error|
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError) { |error|
         expect(error.status).to be_nil
         expect(error.transport?).to be(false)
         expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(false)
@@ -447,13 +467,13 @@ RSpec.describe StandardSingpass::Myinfo::Security do
       jws = sign_jws(payload, ec_key, kid)
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /Connection refused/)
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError, /Connection refused/)
     end
 
     it "raises ValidationError for a malformed JWS" do
       expect {
         described_class.validate_jws("not.a.valid.jws", jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError)
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError)
     end
 
     it "raises ValidationError for an expired JWT" do
@@ -462,7 +482,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
       expect {
         described_class.validate_jws(jws, jwks_url:)
-      }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /Signature has expired/)
+      }.to raise_error(StandardSingpass::Myinfo::SignatureError, /Signature has expired/)
     end
 
     context "when JWKS keys are rotated" do
@@ -510,7 +530,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
         expect {
           described_class.validate_jws(jws, jwks_url: rotation_url)
-        }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /expired/i)
+        }.to raise_error(StandardSingpass::Myinfo::SignatureError, /expired/i)
 
         expect(Faraday).to have_received(:get).with(rotation_url).once
       end
@@ -528,7 +548,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
 
         expect {
           described_class.validate_jws(jws, jwks_url: rotation_url)
-        }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError, /JWS validation failed/)
+        }.to raise_error(StandardSingpass::Myinfo::SignatureError, /JWS validation failed/)
       end
     end
 
@@ -572,7 +592,7 @@ RSpec.describe StandardSingpass::Myinfo::Security do
         rs_jws = JWT.encode(payload, rsa_key, "RS256", { kid: rsa_kid })
         expect {
           described_class.validate_jws(rs_jws, jwks_url:)
-        }.to raise_error(StandardSingpass::Myinfo::Security::ValidationError)
+        }.to raise_error(StandardSingpass::Myinfo::SignatureError)
       end
     end
   end

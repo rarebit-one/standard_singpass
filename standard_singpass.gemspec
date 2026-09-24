@@ -16,14 +16,14 @@ Gem::Specification.new do |spec|
   spec.metadata["bug_tracker_uri"] = "https://github.com/rarebit-one/standard_singpass/issues"
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    Dir["{app,config,db,lib,fixtures}/**/*", "LICENSE", "Rakefile", "README.md", "CHANGELOG.md"]
+    Dir["{lib,fixtures}/**/*", "LICENSE", "Rakefile", "README.md", "CHANGELOG.md"]
   end
 
   spec.required_ruby_version = ">= 4.0"
 
-  spec.add_dependency "rails", ">= 8.0"
-  spec.add_dependency "faraday", ">= 2.0"
-  spec.add_dependency "jwt", ">= 2.7"
+  spec.add_dependency "rails", ">= 8.0", "< 9"
+  spec.add_dependency "faraday", ">= 2.0", "< 3"
+  spec.add_dependency "jwt", ">= 2.7", "< 4"
   spec.add_dependency "aes_key_wrap", "~> 1.1"
   # Sorbet sigils in the gem source (T.let, sig {}, T::Sig) require
   # sorbet-runtime at load time. Declared as a runtime dep so consumers

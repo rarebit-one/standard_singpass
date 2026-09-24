@@ -220,6 +220,38 @@
     }
   },
 
+  "work_permit_holder": {
+    "name": { "value": "MD RAHMAN HASAN" },
+    "uinfin": { "value": "G6543210T" },
+    "dob": { "value": "1992-03-15" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "OT", "desc": "OTHERS" },
+    "nationality": { "code": "BD", "desc": "BANGLADESHI" },
+    "residentialstatus": { "code": "F", "desc": "FOREIGNER" },
+    "passtype": { "code": "RPass", "desc": "Work Permit" },
+    "passstatus": { "code": "LIVE", "desc": "LIVE" },
+    "passexpirydate": { "value": "2027-02-28" },
+    "employmentsector": { "code": "CONSTRUCTION", "desc": "CONSTRUCTION" },
+    "employment": { "value": "BUILDRIGHT CONSTRUCTION PTE LTD" },
+    "occupation": { "code": "9312", "desc": "CONSTRUCTION LABOURER" },
+    "marital": { "code": "1", "desc": "SINGLE" },
+    "email": { "value": "rahman.hasan@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "98771234" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "12" },
+      "street": { "value": "TUAS SOUTH AVENUE 3" },
+      "floor": { "value": "01" },
+      "unit": { "value": "05" },
+      "postal": { "value": "637601" },
+      "country": { "code": "SG" }
+    }
+  },
+
   "error_paths": {
     "name": { "value": "ONG WEI MING" },
     "uinfin": { "value": "S8345678F" },
@@ -243,6 +275,33 @@
       "floor": { "value": "10" },
       "unit": { "value": "1010" },
       "postal": { "value": "149053" },
+      "country": { "code": "SG" }
+    },
+    "employment": { "value": "EMPLOYED" }
+  },
+  "duplicate_check": {
+    "name": { "value": "DUPLICATE CHECK TESTER" },
+    "uinfin": { "value": "S7777777J" },
+    "dob": { "value": "1990-01-01" },
+    "sex": { "code": "M", "desc": "MALE" },
+    "race": { "code": "CN", "desc": "CHINESE" },
+    "nationality": { "code": "SG", "desc": "SINGAPORE CITIZEN" },
+    "residentialstatus": { "code": "C", "desc": "CITIZEN" },
+    "marital": { "code": "1", "desc": "SINGLE" },
+    "edulevel": { "code": "7", "desc": "BACHELOR'S OR EQUIVALENT" },
+    "email": { "value": "dup-check@example.com" },
+    "mobileno": {
+      "prefix": { "value": "+" },
+      "areacode": { "value": "65" },
+      "nbr": { "value": "97777777" }
+    },
+    "regadd": {
+      "type": "SG",
+      "block": { "value": "1" },
+      "street": { "value": "DUPLICATE LANE" },
+      "floor": { "value": "01" },
+      "unit": { "value": "01" },
+      "postal": { "value": "100001" },
       "country": { "code": "SG" }
     },
     "employment": { "value": "EMPLOYED" }

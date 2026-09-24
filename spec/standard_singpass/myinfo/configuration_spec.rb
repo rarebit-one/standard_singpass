@@ -39,6 +39,20 @@ RSpec.describe StandardSingpass::Myinfo::Configuration do
     end
   end
 
+  describe "scope" do
+    # 0.4.0: the default used to be one consuming app's 42-entry underwriting
+    # scope (including the NOA scopes Singpass review flagged). The gem holds
+    # no domain policy, so the default is now the minimal identity set.
+    it "defaults to the minimal identity scope" do
+      expect(described_class.new.scope).to eq("openid uinfin name")
+      expect(described_class::DEFAULT_SCOPE).to eq("openid uinfin name")
+    end
+
+    it "does not request any NOA scope by default" do
+      expect(described_class.new.scope.split).not_to include("noa", "noa-basic", "noahistory", "noahistory-basic")
+    end
+  end
+
   describe "#private_jwks_json=" do
     it "populates signing_key, signing_kid, and encryption_keys from a valid JWKS" do
       c = described_class.new
@@ -81,6 +95,79 @@ RSpec.describe StandardSingpass::Myinfo::Configuration do
       expect(c.signing_key).to be_nil
       expect(c.signing_kid).to be_nil
       expect(Rails.logger).to have_received(:error).with(/public-only/)
+    end
+  end
+
+  # 0.4.0: parsing is deferred so the configure block is order-independent
+  # (it used to read mock_mode / Rails.env at assignment time, hence the old
+  # "set private_jwks_json last" advice).
+  describe "lazy private JWKS parsing" do
+    it "does not parse at assignment time" do
+      c = described_class.new
+      expect(JSON).not_to receive(:parse)
+      c.private_jwks_json = private_jwks
+    end
+
+    it "parses on first read of a derived key" do
+      c = described_class.new
+      c.private_jwks_json = private_jwks
+      expect(c.signing_kid).to eq("sig-1")
+    end
+
+    it "honours mock_mode assigned AFTER private_jwks_json" do
+      allow(Rails.env).to receive(:test?).and_return(false)
+      allow(Rails.logger).to receive(:warn)
+
+      c = described_class.new
+      c.private_jwks_json = nil
+      c.mock_mode = true
+      c.resolve_private_jwks!
+
+      expect(Rails.logger).not_to have_received(:warn)
+    end
+
+    it "warns about a missing JWKS outside mock mode and the test env" do
+      allow(Rails.env).to receive(:test?).and_return(false)
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.new.tap { |c| c.private_jwks_json = nil }.resolve_private_jwks!
+
+      expect(Rails.logger).to have_received(:warn).with(/private_jwks_json is not set/)
+    end
+
+    it "is idempotent until the JWKS is reassigned" do
+      c = described_class.new
+      c.private_jwks_json = private_jwks
+      c.resolve_private_jwks!
+      expect(JSON).not_to receive(:parse)
+      c.resolve_private_jwks!
+      expect(c.signing_kid).to eq("sig-1")
+    end
+
+    it "lets an explicit signing_key= win over an earlier private_jwks_json=" do
+      c = described_class.new
+      c.private_jwks_json = private_jwks
+      c.signing_key = "explicit"
+      expect(c.signing_key).to eq("explicit")
+      expect(c.encryption_keys).to contain_exactly(hash_including(kid: "enc-1"))
+    end
+
+    it "is resolved from the engine's after_initialize so problems surface at boot" do
+      allow(StandardSingpass::Myinfo::MockModeGuard).to receive(:check!)
+      allow(StandardSingpass::Myinfo.configuration).to receive(:resolve_private_jwks!)
+
+      ActiveSupport.run_load_hooks(:after_initialize, Rails.application)
+
+      expect(StandardSingpass::Myinfo.configuration).to have_received(:resolve_private_jwks!).at_least(:once)
+    end
+
+    it "tolerates a nil Rails.logger" do
+      allow(Rails).to receive(:logger).and_return(nil)
+      c = described_class.new
+      c.mock_mode = true
+      c.private_jwks_json = "not-json"
+      expect { c.resolve_private_jwks! }.not_to raise_error
+      expect(c.encryption_keys).to eq([])
     end
   end
 

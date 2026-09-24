@@ -5,15 +5,20 @@ module StandardSingpass
     class Security
       extend T::Sig
 
-      # Both inherit the gem's base Error so they carry `status` and
-      # `transport?`. That matters for ValidationError in particular: fetching
-      # the JWKS is a network call to a Singpass host, so "the JWKS endpoint
-      # is down" and "this signature is genuinely bad" both surface here and
-      # must stay distinguishable — the first is an outage, the second is a
-      # key/cert problem. FailureClassifier reads those attributes; without
-      # them a JWKS-host outage would be reported as our own bug.
-      class DecryptionError < Error; end
-      class ValidationError < Error; end
+      # Deprecated aliases (0.4.0). Security used to raise its own
+      # DecryptionError / ValidationError, which the client then translated
+      # into the public Myinfo errors. It now raises the public errors
+      # directly: JWE failures raise `Myinfo::DecryptionError`, JWS / JWKS
+      # failures raise `Myinfo::SignatureError` (carrying the JWKS response's
+      # `status`, or `transport?` when the JWKS host was unreachable, so an
+      # outage stays distinguishable from a genuinely bad signature).
+      #
+      # The old names still resolve — to the same classes, so an existing
+      # `rescue Security::ValidationError` keeps catching — and will be
+      # removed in a future minor release.
+      DecryptionError = Myinfo::DecryptionError
+      ValidationError = Myinfo::SignatureError
+      deprecate_constant :DecryptionError, :ValidationError
 
       JWKS_CACHE_TTL = T.let(1.hour, ActiveSupport::Duration)
 
@@ -94,21 +99,25 @@ module StandardSingpass
       sig { params(jwe_string: String, private_keys: T::Array[T::Hash[Symbol, T.untyped]]).returns(String) }
       def self.decrypt_jwe(jwe_string, private_keys:)
         header_kid = extract_jwe_kid(jwe_string)
-        raise DecryptionError, "JWE header missing kid field" unless header_kid
+        raise Myinfo::DecryptionError, "JWE header missing kid field" unless header_kid
 
         matching_key = private_keys.find { |k| k[:kid] == header_kid }
-        raise DecryptionError, "No matching decryption key found" unless matching_key
+        raise Myinfo::DecryptionError, "No matching decryption key found" unless matching_key
 
         alg = extract_jwe_alg(jwe_string)
         unless EcdhJwe::SUPPORTED_ALGS.include?(alg)
-          raise DecryptionError, "Unsupported JWE alg #{alg.inspect}; FAPI 2.0 requires #{EcdhJwe::SUPPORTED_ALGS.join('/')}"
+          raise Myinfo::DecryptionError, "Unsupported JWE alg #{alg.inspect}; FAPI 2.0 requires #{EcdhJwe::SUPPORTED_ALGS.join('/')}"
         end
 
         EcdhJwe.decrypt(jwe_string, private_key: resolve_key(matching_key[:key]))
       rescue EcdhJwe::DecryptionFailed => e
-        raise DecryptionError, "JWE decryption failed: #{e.message}"
+        raise Myinfo::DecryptionError, "JWE decryption failed: #{e.message}"
+      rescue EcdhJwe::InvalidAlgorithm => e
+        # e.g. an unsupported `enc` — previously escaped as a bare
+        # StandardError subclass, bypassing every `rescue Myinfo::Error`.
+        raise Myinfo::DecryptionError, "Unsupported JWE: #{e.message}"
       rescue ArgumentError => e
-        raise DecryptionError, "Malformed JWE: #{e.message}"
+        raise Myinfo::DecryptionError, "Malformed JWE: #{e.message}"
       end
 
       # Validates a JWS string against keys from a JWKS endpoint.
@@ -124,10 +133,10 @@ module StandardSingpass
           begin
             decode_with_jwks(jws_string, jwks_data)
           rescue JWT::DecodeError => e
-            raise ValidationError, "JWS validation failed: #{e.message}"
+            raise Myinfo::SignatureError, "JWS validation failed: #{e.message}"
           end
         rescue JWT::DecodeError => e
-          raise ValidationError, "JWS validation failed: #{e.message}"
+          raise Myinfo::SignatureError, "JWS validation failed: #{e.message}"
         end
       end
 
@@ -164,7 +173,7 @@ module StandardSingpass
         case key
         when OpenSSL::PKey::PKey then key
         when String then OpenSSL::PKey.read(key)
-        else raise DecryptionError, "Unsupported key type: #{key.class}"
+        else raise Myinfo::DecryptionError, "Unsupported key type: #{key.class}"
         end
       end
       private_class_method :resolve_key
@@ -178,7 +187,7 @@ module StandardSingpass
         Rails.cache.fetch(cache_key, expires_in: JWKS_CACHE_TTL) do
           response = Faraday.get(url) { |req| req.options.timeout = 5; req.options.open_timeout = 3 }
           unless response.success?
-            raise ValidationError.new("Failed to fetch JWKS: HTTP #{response.status}", status: response.status)
+            raise Myinfo::SignatureError.new("Failed to fetch JWKS: HTTP #{response.status}", status: response.status)
           end
 
           JSON.parse(response.body)
@@ -186,10 +195,10 @@ module StandardSingpass
       rescue Faraday::Error => e
         # Never reached the JWKS host — the same "their side" case a transport
         # failure on any other leg represents.
-        raise ValidationError.new("Failed to fetch JWKS: #{e.message}", transport: true)
+        raise Myinfo::SignatureError.new("Failed to fetch JWKS: #{e.message}", transport: true)
       rescue JSON::ParserError => e
         # Reached it and got something unusable. Not an availability problem.
-        raise ValidationError, "Failed to fetch JWKS: #{e.message}"
+        raise Myinfo::SignatureError, "Failed to fetch JWKS: #{e.message}"
       end
       private_class_method :fetch_jwks
 

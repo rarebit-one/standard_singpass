@@ -10,10 +10,13 @@
 #   c.client_id          - App ID from Singpass Developer Portal
 #   c.redirect_url       - OAuth callback URL (e.g. https://example.com/singpass/callback)
 #   c.private_jwks_json  - Full JWKS JSON string with private signing + encryption keys
-#                          (keys are identified by "use": "sig" and "use": "enc")
+#                          (keys are identified by "use": "sig" and "use": "enc").
+#                          Parsed lazily, so it can be assigned in any order.
 #
 # Optional attributes:
-#   c.scope                  - Space-separated scopes (defaults to DEFAULT_SCOPE)
+#   c.scope                  - Space-separated scopes. Defaults to the minimal
+#                              DEFAULT_SCOPE ("openid uinfin name"); every
+#                              real host should set its own approved list.
 #   c.minimum_acr            - Minimum Authentication Context Class Reference URN
 #                              (e.g. urn:singpass:authentication:loa:3) checked
 #                              client-side against the id_token `acr` claim.
@@ -33,79 +36,25 @@
 module StandardSingpass
   module Myinfo
     class Configuration
-      # Default MyInfo scope — keep aligned with the Singpass developer-portal
-      # approval list. Entries on separate lines so diffs against the portal's
-      # ordered dump are reviewable line-by-line. Joined into a single
-      # space-delimited string before sending to PAR.
-      DEFAULT_SCOPE = %w[
-        openid
-        aliasname
-        cpfbalances.oa
-        cpfcontributions
-        cpfemployers
-        cpfhousingwithdrawal
-        dob
-        email
-        employment
-        employmentsector
-        hanyupinyinaliasname
-        hanyupinyinname
-        hdbownership.address
-        hdbownership.balanceloanrepayment
-        hdbownership.hdbtype
-        hdbownership.loangranted
-        hdbownership.monthlyloaninstalment
-        hdbownership.noofowners
-        hdbownership.outstandinginstalment
-        hdbownership.outstandingloanbalance
-        hdbtype
-        housingtype
-        marital
-        marriedname
-        mobileno
-        name
-        nationality
-        noa
-        noa-basic
-        noahistory
-        noahistory-basic
-        occupation
-        ownerprivate
-        passexpirydate
-        passstatus
-        passtype
-        race
-        regadd
-        residentialstatus
-        sex
-        uinfin
-        vehicles.effectiveownership
-      ].join(" ").freeze
-
-      # The categories and their lender-underwriting purpose (PDPA §18,
-      # Purpose Limitation):
+      # Default MyInfo scope: the minimal identity set (`openid` plus the
+      # NRIC/FIN and name). Deliberately tiny.
       #
-      #   Identity        — uinfin, name, alias names, dob, sex, race,
-      #                     nationality, residentialstatus → KYC, contracts
-      #   Pass (FIN-only) — passtype, passstatus, passexpirydate,
-      #                     employmentsector → tenure-vs-pass-expiry, eligibility
-      #   Address         — regadd, hdbtype, housingtype → KYC + income proxy
-      #   Contact         — mobileno, email → OTP, mailers
-      #   Family          — marital → soft underwriting signal
-      #   Income          — noa, noa-basic, noahistory, noahistory-basic,
-      #                     cpfcontributions → MAS TDSR input
-      #   Employment      — employment, occupation, cpfemployers
-      #                     → continuity + employer stability
-      #   Assets          — cpfbalances.oa (only OA — MA/SA/RA are ring-fenced
-      #                     and not lender-relevant), ownerprivate
-      #   Liabilities     — cpfhousingwithdrawal, hdbownership.* (8 sub-fields)
-      #                     → TDSR housing component
-      #   Vehicle         — vehicles.effectiveownership (asset/liability hint;
-      #                     full vehicle details deliberately not requested)
+      # Which person attributes to request is a business decision (PDPA §18,
+      # Purpose Limitation) that must match the host's Singpass
+      # developer-portal approval list, so it belongs to the host, not this
+      # gem. Until 0.4.0 this constant was one consuming app's 42-entry
+      # underwriting scope — including `noa`, `noa-basic` and
+      # `noahistory-basic`, which Singpass review later flagged as redundant
+      # collection — and any host that relied on the default silently
+      # requested all of it.
       #
-      # `cpfbalances.oa`, `hdbownership.*`, and `vehicles.effectiveownership`
-      # use FAPI 2.0 sub-attribute scope notation — sharper data minimisation
-      # than parent-keyword grants.
+      # A minimal default rather than a boot-time "scope is required" error:
+      # `openid uinfin name` is a subset of every MyInfo approval, so a host
+      # that forgets to set `scope` gets a working flow that collects the
+      # least data possible, instead of either over-collecting (the old
+      # default) or failing to boot in development and test. Hosts set
+      # `c.scope` explicitly; the install generator does.
+      DEFAULT_SCOPE = "openid uinfin name"
 
       PRODUCTION_ENDPOINTS = {
         authorize_url:     "https://id.singpass.gov.sg/fapi/auth",
@@ -130,7 +79,6 @@ module StandardSingpass
       attr_accessor :authorize_url, :par_url, :token_url, :userinfo_url,
                     :jwks_url, :userinfo_jwks_url, :issuer,
                     :client_id, :redirect_url, :scope,
-                    :signing_key, :signing_kid, :encryption_keys,
                     :minimum_acr, :network_wrapper, :mock_mode, :personas_path
 
       # Optional callable deciding whether the current deploy is real
@@ -148,6 +96,10 @@ module StandardSingpass
         self.environment = :staging
         @scope = DEFAULT_SCOPE
         @encryption_keys = []
+        @signing_key = nil
+        @signing_kid = nil
+        @private_jwks_json = nil
+        @private_jwks_pending = false
         @network_wrapper = ->(&block) { block.call }
         @mock_mode = false
         @production_env_detector = nil
@@ -167,18 +119,77 @@ module StandardSingpass
 
       attr_reader :environment
 
-      # Accepts the raw JWKS JSON string and populates signing_key, signing_kid,
-      # and encryption_keys. Logs and reports issues via Rails.logger / Rails.error
-      # rather than raising — a malformed JWKS silently degrades the Singpass
-      # widget at runtime, but the host should boot regardless.
+      # Stores the raw private JWKS JSON string. Parsing into signing_key,
+      # signing_kid, and encryption_keys is deferred until one of those is
+      # first read (or `resolve_private_jwks!` is called — the engine does so
+      # from `after_initialize`, alongside MockModeGuard, so problems surface
+      # at boot). Until 0.4.0 this setter parsed eagerly, so its warnings
+      # depended on `mock_mode` having been assigned *before* it ("set
+      # last"); deferring makes the configure block order-independent.
+      #
+      # Issues are logged and reported via Rails.logger / Rails.error rather
+      # than raised — a malformed JWKS silently degrades the Singpass widget
+      # at runtime, but the host should boot regardless.
       def private_jwks_json=(jwks_json)
+        @private_jwks_json = jwks_json
+        @private_jwks_pending = true
+      end
+
+      attr_reader :private_jwks_json
+
+      def signing_key
+        resolve_private_jwks!
+        @signing_key
+      end
+
+      def signing_kid
+        resolve_private_jwks!
+        @signing_kid
+      end
+
+      def encryption_keys
+        resolve_private_jwks!
+        @encryption_keys
+      end
+
+      # Direct assignment still works (and wins over an earlier
+      # `private_jwks_json=`): any pending JWKS is resolved first so it can't
+      # later overwrite the explicit value.
+      def signing_key=(value)
+        resolve_private_jwks!
+        @signing_key = value
+      end
+
+      def signing_kid=(value)
+        resolve_private_jwks!
+        @signing_kid = value
+      end
+
+      def encryption_keys=(value)
+        resolve_private_jwks!
+        @encryption_keys = value
+      end
+
+      # Parses the pending private JWKS, if any. Idempotent: a no-op until
+      # `private_jwks_json=` is assigned again. Returns self.
+      def resolve_private_jwks!
+        return self unless @private_jwks_pending
+
+        @private_jwks_pending = false
+        parse_private_jwks(@private_jwks_json)
+        self
+      end
+
+      private
+
+      def parse_private_jwks(jwks_json)
         @encryption_keys = []
         @signing_key = nil
         @signing_kid = nil
 
         if jwks_json.nil? || jwks_json.to_s.strip.empty?
-          return if mock_mode || (defined?(Rails) && Rails.env.test?)
-          Rails.logger.warn("StandardSingpass::Myinfo: private_jwks_json is not set — Singpass flow will fail at first request")
+          return if quiet?
+          log(:warn, "private_jwks_json is not set — Singpass flow will fail at first request")
           return
         end
 
@@ -187,7 +198,7 @@ module StandardSingpass
         keys = jwks["keys"] || []
 
         sig_jwks = keys.select { |k| k.is_a?(Hash) && k["use"] == "sig" }
-        Rails.logger.warn("StandardSingpass::Myinfo: multiple sig keys in private_jwks_json — using first") if sig_jwks.size > 1
+        log(:warn, "multiple sig keys in private_jwks_json — using first") if sig_jwks.size > 1
         sig_jwk = sig_jwks.first
         if sig_jwk
           @signing_kid = sig_jwk["kid"]
@@ -196,8 +207,8 @@ module StandardSingpass
           # confusing in console triage (which is the scenario this method is
           # trying to help with).
           @signing_kid = nil unless @signing_key
-        elsif !mock_mode && !(defined?(Rails) && Rails.env.test?)
-          Rails.logger.error("StandardSingpass::Myinfo: private_jwks_json contains no key with \"use\":\"sig\"")
+        elsif !quiet?
+          log(:error, "private_jwks_json contains no key with \"use\":\"sig\"")
         end
 
         enc_jwks = keys.select { |k| k.is_a?(Hash) && k["use"] == "enc" }
@@ -210,11 +221,11 @@ module StandardSingpass
         # forgot to include enc keys) vs all-rejected (every enc key was
         # public-only or otherwise unloadable). The latter is the trap the
         # rest of this method is built to catch.
-        if @encryption_keys.empty? && !mock_mode && !(defined?(Rails) && Rails.env.test?)
+        if @encryption_keys.empty? && !quiet?
           if enc_jwks.empty?
-            Rails.logger.error("StandardSingpass::Myinfo: private_jwks_json contains no key with \"use\":\"enc\"")
+            log(:error, "private_jwks_json contains no key with \"use\":\"enc\"")
           else
-            Rails.logger.error("StandardSingpass::Myinfo: private_jwks_json has \"use\":\"enc\" keys but none are usable (all public-only or invalid)")
+            log(:error, "private_jwks_json has \"use\":\"enc\" keys but none are usable (all public-only or invalid)")
           end
         end
       rescue JSON::ParserError, TypeError => e
@@ -224,12 +235,31 @@ module StandardSingpass
         # Reported because a malformed private JWKS silently degrades the
         # Singpass widget — the request that finally fails will report, but by
         # then customers have hit the broken page.
-        Rails.logger.error("StandardSingpass::Myinfo: failed to parse private_jwks_json: #{e.class}: #{e.message}")
-        Rails.error.report(e, handled: true, context: { component: "StandardSingpass::Myinfo::Configuration", reason: "parse_private_jwks" }) if defined?(Rails.error)
+        log(:error, "failed to parse private_jwks_json: #{e.class}: #{e.message}")
+        report(e, reason: "parse_private_jwks")
         @encryption_keys = []
       end
 
-      private
+      # Missing-key warnings are noise in mock mode and in the test env.
+      # Read at parse time — i.e. after the whole configure block has run —
+      # so the order of assignments inside the block no longer matters.
+      def quiet?
+        mock_mode || (defined?(::Rails) && ::Rails.respond_to?(:env) && ::Rails.env.test?)
+      end
+
+      # Rails.logger / Rails.error are optional: the gem can be loaded (and a
+      # Configuration built) outside a booted Rails app — tooling, plain Ruby
+      # scripts, or before the logger is assigned.
+      def log(level, message)
+        return unless defined?(::Rails) && ::Rails.respond_to?(:logger)
+        ::Rails.logger&.public_send(level, "StandardSingpass::Myinfo: #{message}")
+      end
+
+      def report(error, reason:, **context)
+        return unless defined?(::Rails) && ::Rails.respond_to?(:error)
+        ::Rails.error.report(error, handled: true, context: { component: "StandardSingpass::Myinfo::Configuration", reason:, **context })
+      end
+
 
       # Converts a JWK to a *private* PEM. Refuses public-only JWKs — the
       # private scalar (`d` for EC) must be present, otherwise signing /
@@ -239,13 +269,13 @@ module StandardSingpass
       def jwk_to_private_pem(jwk_hash, role:)
         kid = jwk_hash["kid"]
         if jwk_hash["d"].blank?
-          Rails.logger.error("StandardSingpass::Myinfo: #{role} JWK #{kid.inspect} is public-only (missing \"d\") — re-export with include_private: true")
+          log(:error, "#{role} JWK #{kid.inspect} is public-only (missing \"d\") — re-export with include_private: true")
           return nil
         end
         JWT::JWK.new(jwk_hash).keypair.to_pem
       rescue => e
-        Rails.logger.error("StandardSingpass::Myinfo: failed to convert #{role} JWK #{kid.inspect}: #{e.class} — #{e.message}")
-        Rails.error.report(e, handled: true, context: { component: "StandardSingpass::Myinfo::Configuration", reason: "jwk_to_private_pem", role:, kid: }) if defined?(Rails.error)
+        log(:error, "failed to convert #{role} JWK #{kid.inspect}: #{e.class} — #{e.message}")
+        report(e, reason: "jwk_to_private_pem", role:, kid:)
         nil
       end
     end

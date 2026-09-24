@@ -30,6 +30,16 @@ RSpec.describe StandardSingpass::Generators::InstallGenerator, type: :generator 
     expect(content).to include("c.private_jwks_json")
   end
 
+  # 0.4.0: the template sets scope explicitly instead of deferring to the
+  # gem's DEFAULT_SCOPE — scope selection is a host decision.
+  it "sets scope explicitly rather than referencing DEFAULT_SCOPE" do
+    run_generator
+
+    content = File.read(initializer_path)
+    expect(content).to match(/^\s*c\.scope = /)
+    expect(content).not_to include("DEFAULT_SCOPE")
+  end
+
   # Regression (0.3.1): the template used to wire `c.minimum_acr =
   # ENV["MYINFO_MIN_ACR"]`. Setting that env var in production broke every
   # MyInfo onboarding, because a non-empty minimum_acr was sent to Singpass as

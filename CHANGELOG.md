@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
+### Upgrading from 0.3.x
+
+1. **Set `c.scope` explicitly** if you relied on `DEFAULT_SCOPE` — it is now only `openid uinfin name`.
+2. `rescue Security::DecryptionError` / `Security::ValidationError` keeps working (they alias the public classes) but should move to `DecryptionError` / `SignatureError`.
+3. Specs calling `Myinfo::EcdhJwe.encrypt` should `require "standard_singpass/testing"` and call `StandardSingpass::Testing::EcdhJwe.encrypt`.
+4. The "set `private_jwks_json` last" ordering rule no longer applies.
+
+### Changed
+
+- **Breaking: `Configuration::DEFAULT_SCOPE` is now the minimal `"openid uinfin name"`.** It used to be one consuming app's 42-entry underwriting scope — including `noa`, `noa-basic` and `noahistory-basic`, which Singpass review flagged as redundant collection — so any host that never set `c.scope` silently requested all of it. Which attributes to collect is a host decision (PDPA Purpose Limitation) that must match the host's own developer-portal approval list, and the gem holds no domain policy. A minimal default was chosen over a "scope is required" boot error because `openid uinfin name` is a subset of every MyInfo approval: a host that forgets to set it gets a working flow that collects the least data possible, rather than over-collecting or failing to boot in development and test. The install generator now sets `c.scope` explicitly.
+
+  **Upgrade note:** if you relied on the old default, set `c.scope` to your approved list before upgrading — otherwise `PersonDataParser` fields outside `uinfin`/`name` come back `nil`. The 0.3.1 list is in [`configuration.rb` at v0.3.1](https://github.com/rarebit-one/standard_singpass/blob/v0.3.1/lib/standard_singpass/myinfo/configuration.rb) for reference (drop the NOA entries your approval does not cover). Hosts that already set `c.scope` are unaffected.
+- **Behaviour change: `ECDH-ES+A128KW` is no longer accepted.** `EcdhJwe::SUPPORTED_ALGS` is now `["ECDH-ES+A256KW"]` — the only alg the gem publishes on its encryption JWKs (`Myinfo.public_jwks`) and the one FAPI 2.0 Singpass uses. An A128KW JWE now raises `DecryptionError` ("Unsupported JWE alg") instead of decrypting. Nothing legitimate sends it to us, so accepting it was pure attack surface; hosts should see no difference.
+- **`Security` raises the public errors directly; `Security::DecryptionError` / `Security::ValidationError` are deprecated aliases.** JWE failures now raise `StandardSingpass::Myinfo::DecryptionError` and JWS / JWKS-fetch failures raise `StandardSingpass::Myinfo::SignatureError` (still carrying the JWKS response's `status`, or `transport?` when the JWKS host was unreachable). The old constants resolve to those same classes — `Security::ValidationError` *is* `SignatureError` — so an existing `rescue Security::ValidationError` keeps catching; referencing them emits Ruby's constant-deprecation warning (when `Warning[:deprecated]` is on) and they will be removed in a future minor. The client no longer needs to translate them on the userinfo leg; on the ID-token leg they are still wrapped in `AuthenticationError` exactly as before.
+- **New gem-wide root `StandardSingpass::Error`**, which `StandardSingpass::Myinfo::Error` now inherits from (previously `StandardError`). Existing `rescue StandardSingpass::Myinfo::Error` is unaffected.
+- **`private_jwks_json=` is parsed lazily.** The setter now only stores the JSON; it is parsed into `signing_key` / `signing_kid` / `encryption_keys` on first read of any of them, or by `Configuration#resolve_private_jwks!`, which the engine calls from `after_initialize` alongside `MockModeGuard` so missing / malformed-key warnings still surface at boot. Previously the setter parsed eagerly and read `mock_mode` / `Rails.env` at assignment time, so the configure block was order-dependent (hence the old "set `private_jwks_json` last" advice — no longer needed). Assigning `signing_key=` / `signing_kid=` / `encryption_keys=` directly still works and wins over an earlier `private_jwks_json=`. `Rails.logger` / `Rails.error` are now guarded (nil logger, or no Rails at all) in the parser and in `Myinfo.public_jwks`.
+- **`EcdhJwe.encrypt` moved to `StandardSingpass::Testing::EcdhJwe.encrypt`** (`require "standard_singpass/testing"`, not loaded by default). Encryption is only ever needed to build test fixtures — Singpass encrypts, the gem decrypts — so it no longer ships in the runtime load path. `StandardSingpass::Myinfo::EcdhJwe.encrypt` remains as a deprecated forwarder (same signature) that warns through the new `StandardSingpass.deprecator` — registered with `Rails.application.deprecators[:standard_singpass]` — and will be removed in a future minor.
+- **Dependency upper bounds:** `rails >= 8.0, < 9`, `faraday >= 2.0, < 3`, `jwt >= 2.7, < 4`. Each next major is a real API break for code the gem depends on (`JWT::JWK`, Faraday connection options, Rails engine hooks) and should be adopted deliberately rather than resolved into silently. The consuming app's current versions (Rails 8.1, Faraday 2.14, jwt 3.3) are all inside the ranges.
+- **Gem packaging:** `spec.files` no longer globs `app/`, `config/`, or `db/` (the gem has none), and the engine drops `isolate_namespace` — it has no routes, models, controllers, or views, so namespace isolation did nothing. Hosts never mounted it, so nothing changes for them.
+
+### Added
+
+- **`ActiveSupport::Notifications` instrumentation.** `standard_singpass.par`, `standard_singpass.token`, and `standard_singpass.userinfo` wrap each leg of the flow with a payload of `duration` (ms), `status`, `error` (class name only), `transport`, and — for userinfo — `attempts`; `standard_singpass.retry` fires on each automatic userinfo retry with `leg`, `attempt`, `status`, `error`, and `delay`. Payloads are PII-free by construction: no tokens, codes, bodies, URLs, or error messages (the error is captured and re-raised outside the instrument block, so ActiveSupport's message-bearing `:exception` keys are never added). See README → Instrumentation.
+- **`StandardSingpass.configure` / `StandardSingpass.config`** — top-level aliases for `StandardSingpass::Myinfo.configure` / `.configuration`, matching the sibling `standard_*` gems' `Gem.configure` / `Gem.config` convention. `StandardSingpass::Myinfo.config` is also available. The existing `Myinfo.configure` / `Myinfo.configuration` entry points are unchanged.
+- **Two more bundled test personas** in `fixtures/myinfo-personas.json`, upstreamed from the consuming app's own fixture set: `work_permit_holder` (FIN holder on a Work Permit / `RPass`) and `duplicate_check` (a stable NRIC for exercising duplicate-application paths). The existing personas are unchanged.
+
+### Deprecated
+
+- **`TestPersonas.reload!`** — unused by any consumer; now warns via `StandardSingpass.deprecator` and will be removed in a future minor.
+- **`Security::DecryptionError` / `Security::ValidationError`** — aliases of `DecryptionError` / `SignatureError`; see Changed.
+- **`StandardSingpass::Myinfo::EcdhJwe.encrypt`** — use `StandardSingpass::Testing::EcdhJwe.encrypt`; see Changed.
+
+### Fixed
+
+- **An unsupported JWE `enc` now raises `StandardSingpass::Myinfo::DecryptionError`.** `EcdhJwe::InvalidAlgorithm` (a bare `StandardError`) used to escape `Security.decrypt_jwe`, bypassing every `rescue StandardSingpass::Myinfo::Error` in a host.
+
+### Documentation
+
+- **README:** new "Instrumentation" and "Development and testing" sections (running the suite, mock-mode personas, the test-only JWE encryptor); the configuration example sets `c.scope` explicitly and notes the top-level `StandardSingpass.configure` alias and lazy JWKS parsing; the error section documents `StandardSingpass::Error` and the deprecated `Security` aliases.
+- **Install generator** sets `c.scope` to an explicit list and drops the "set `private_jwks_json` last" advice.
+
 ## [0.3.1] - 2026-09-24
 
 ### Fixed

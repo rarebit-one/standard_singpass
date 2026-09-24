@@ -47,14 +47,16 @@ migrations of its own.
 ```
 standard_singpass/
 ├── lib/standard_singpass/
-│   ├── engine.rb                       # Mounts rake tasks at boot
+│   ├── engine.rb                       # Rake tasks + after_initialize hooks
 │   ├── version.rb
-│   ├── myinfo.rb                       # Top-level configure / public_jwks
+│   ├── error.rb                        # StandardSingpass::Error (gem-wide root)
+│   ├── testing.rb                      # Test-only: Testing::EcdhJwe.encrypt
+│   ├── myinfo.rb                       # Myinfo.configure / public_jwks
 │   └── myinfo/
-│       ├── configuration.rb            # Block-style config object + DEFAULT_SCOPE
+│       ├── configuration.rb            # Block-style config object (minimal DEFAULT_SCOPE)
 │       ├── client.rb                   # FAPI 2.0 OAuth client (PAR + token + userinfo)
 │       ├── security.rb                 # PKCE, DPoP, JWE dispatch, JWS validation
-│       ├── ecdh_jwe.rb                 # Native ECDH-ES key agreement + JWE codec
+│       ├── ecdh_jwe.rb                 # Native ECDH-ES+A256KW JWE decryption
 │       ├── person_data_parser.rb       # FAPI 2.0 v5 userinfo → 40+ field hash
 │       ├── jwks_generator.rb           # Generate + validate the private JWKS
 │       ├── test_personas.rb            # Load persona fixtures for mock flows
@@ -64,7 +66,6 @@ standard_singpass/
 ├── lib/generators/standard_singpass/
 │   └── install/                        # `rails g standard_singpass:install`
 ├── fixtures/myinfo-personas.json       # Default persona set
-├── config/
 └── spec/
     ├── dummy/                          # Bare Rails app, in-memory SQLite
     ├── standard_singpass/myinfo/       # Per-class specs + full_flow_spec
@@ -143,12 +144,17 @@ run `srb tc`. RBIs for the gem's own runtime deps are committed under
   `reset_configuration!` in an `after` block.
 - The full-flow spec at `spec/standard_singpass/myinfo/full_flow_spec.rb`
   walks PAR → token → userinfo → JWE decrypt → JWS validate → parse using
-  the gem's own `EcdhJwe.encrypt` to construct payloads. Update it
+  `StandardSingpass::Testing::EcdhJwe.encrypt` (from
+  `require "standard_singpass/testing"`, loaded in `rails_helper.rb`) to
+  construct payloads. Update it
   whenever the public surface of `Client` changes.
 
 ## Error Class Taxonomy
 
-All errors descend from `StandardSingpass::Myinfo::Error`.
+All errors descend from `StandardSingpass::Myinfo::Error`, which descends
+from the gem-wide `StandardSingpass::Error`. `Security` raises these public
+classes directly; `Security::DecryptionError` / `Security::ValidationError`
+are deprecated aliases of `DecryptionError` / `SignatureError`.
 
 | Class                  | Meaning                                                |
 |------------------------|--------------------------------------------------------|
@@ -160,8 +166,9 @@ All errors descend from `StandardSingpass::Myinfo::Error`.
 | `RateLimitError`       | Singpass returned HTTP 429                             |
 | `ConfigurationError`   | Gem is misconfigured (e.g. invalid ACR URN)            |
 
-`DecryptionError` and `SignatureError` indicate key/cert misconfiguration,
-not an upstream outage. Exclude them from circuit-breaker tracking.
+`DecryptionError` and `SignatureError` usually indicate key/cert
+misconfiguration, but a JWKS-host outage also surfaces as `SignatureError`
+(with `status` / `transport?` set) — classify with `FailureClassifier`.
 
 ## Security Notes
 
@@ -180,13 +187,14 @@ not an upstream outage. Exclude them from circuit-breaker tracking.
 
 | File                                                  | Purpose                                          |
 |-------------------------------------------------------|--------------------------------------------------|
-| `lib/standard_singpass.rb`                            | Public entrypoint + version                      |
-| `lib/standard_singpass/engine.rb`                     | Rails engine + rake task loader                  |
+| `lib/standard_singpass.rb`                            | Entrypoint; `configure` / `config` / `deprecator`|
+| `lib/standard_singpass/engine.rb`                     | Rails engine: rake tasks, boot hooks             |
+| `lib/standard_singpass/testing.rb`                    | Test-only JWE encryptor (not loaded by default)  |
 | `lib/standard_singpass/myinfo.rb`                     | `configure`, `public_jwks`, error classes        |
 | `lib/standard_singpass/myinfo/configuration.rb`       | Config object, DEFAULT_SCOPE, private JWKS parser|
 | `lib/standard_singpass/myinfo/client.rb`              | FAPI 2.0 OAuth client                            |
 | `lib/standard_singpass/myinfo/security.rb`            | PKCE, DPoP, JWE dispatch, JWS validation         |
-| `lib/standard_singpass/myinfo/ecdh_jwe.rb`            | Native ECDH-ES JWE codec                         |
+| `lib/standard_singpass/myinfo/ecdh_jwe.rb`            | Native ECDH-ES JWE decryption                    |
 | `lib/standard_singpass/myinfo/person_data_parser.rb`  | Userinfo → host-shaped hash                      |
 | `lib/standard_singpass/myinfo/jwks_generator.rb`      | Generate + validate private JWKS                 |
 | `lib/standard_singpass/myinfo/test_personas.rb`       | Persona fixture loader                           |
@@ -195,9 +203,9 @@ not an upstream outage. Exclude them from circuit-breaker tracking.
 
 ## Dependencies
 
-- **rails** — `>= 8.0`
-- **faraday** — `>= 2.0` (HTTP client)
-- **jwt** — `>= 2.7` (JWS/JWT signing + verification)
+- **rails** — `>= 8.0, < 9`
+- **faraday** — `>= 2.0, < 3` (HTTP client)
+- **jwt** — `>= 2.7, < 4` (JWS/JWT signing + verification)
 - **aes_key_wrap** — `~> 1.1` (RFC 3394, used by ECDH-ES+A256KW)
 - **sorbet-runtime** — `~> 0.5` (sigils evaluated at load time)
 

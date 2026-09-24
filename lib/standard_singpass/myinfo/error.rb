@@ -1,8 +1,11 @@
 # typed: strict
 
+require "standard_singpass/error"
+
 module StandardSingpass
   module Myinfo
-    # Base class for every error the gem raises.
+    # Base class for every MyInfo error the gem raises. Descends from the
+    # gem-wide `StandardSingpass::Error`.
     #
     # Every error carries the two facts a host needs to decide what to tell
     # the user, so neither has to be recovered by reading the message:
@@ -26,7 +29,7 @@ module StandardSingpass
     # The alternative — matching "unreachable" or an HTTP code in `message` —
     # is a trap: the message is not a stable interface. `FailureClassifier`
     # consumes these so hosts never have to.
-    class Error < StandardError
+    class Error < StandardSingpass::Error
       extend T::Sig
 
       sig { returns(T.nilable(Integer)) }
