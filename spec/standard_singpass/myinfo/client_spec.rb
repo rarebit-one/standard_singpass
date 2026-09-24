@@ -1075,4 +1075,99 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       }.to raise_error(ArgumentError, /userinfo_jwks_url/)
     end
   end
+
+  describe "instrumentation" do
+    let(:events) { [] }
+    let(:par_url) { config[:par_url] }
+
+    around do |example|
+      subscriber = ActiveSupport::Notifications.subscribe(/\Astandard_singpass\./) do |event|
+        events << event
+      end
+      example.run
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+
+    def event(name)
+      events.find { |e| e.name == "standard_singpass.#{name}" }
+    end
+
+    before do
+      allow(StandardSingpass::Myinfo::Security).to receive(:decrypt_jwe) do |jwe, **_kwargs|
+        jwe == id_token ? "id-token-jws" : "userinfo-jws"
+      end
+      allow(StandardSingpass::Myinfo::Security).to receive(:validate_jws) do |jws, **_kwargs|
+        jws == "id-token-jws" ? id_token_claims : person_data
+      end
+      stub_request(:post, token_url)
+        .to_return(status: 200, body: { access_token:, id_token: }.to_json)
+    end
+
+    it "emits standard_singpass.par with status and duration" do
+      stub_request(:post, par_url)
+        .to_return(status: 201, body: { request_uri: "urn:x", expires_in: 60 }.to_json)
+
+      client.push_authorization_request(code_challenge: "c", state: "s", nonce: "n", dpop_key_pair:)
+
+      payload = event(:par).payload
+      expect(payload).to include(status: 201, error: nil, transport: false)
+      expect(payload[:duration]).to be_a(Float)
+    end
+
+    it "records the error class (never the message) on a failed leg and re-raises" do
+      stub_request(:post, par_url).to_return(status: 500, body: { error: "server_error" }.to_json)
+
+      expect {
+        client.push_authorization_request(code_challenge: "c", state: "s", nonce: "n", dpop_key_pair:)
+      }.to raise_error(StandardSingpass::Myinfo::PARError)
+
+      payload = event(:par).payload
+      expect(payload).to include(status: 500, error: "StandardSingpass::Myinfo::PARError")
+      expect(payload).not_to have_key(:exception)
+      expect(payload).not_to have_key(:exception_object)
+    end
+
+    it "flags transport failures" do
+      stub_request(:post, par_url).to_timeout
+
+      expect {
+        client.push_authorization_request(code_challenge: "c", state: "s", nonce: "n", dpop_key_pair:)
+      }.to raise_error(StandardSingpass::Myinfo::PARError)
+
+      expect(event(:par).payload).to include(transport: true, status: nil)
+    end
+
+    it "emits token and userinfo events for a full exchange" do
+      stub_request(:get, userinfo_url).to_return(status: 200, body: "encrypted-userinfo-jwe")
+
+      client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+
+      expect(event(:token).payload).to include(status: 200, error: nil)
+      expect(event(:userinfo).payload).to include(status: 200, error: nil, attempts: 1)
+    end
+
+    it "emits standard_singpass.retry per userinfo retry" do
+      allow(client).to receive(:sleep)
+      stub_request(:get, userinfo_url)
+        .to_return(status: 502, body: "bad gateway")
+        .then.to_return(status: 200, body: "encrypted-userinfo-jwe")
+
+      client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+
+      retries = events.select { |e| e.name == "standard_singpass.retry" }
+      expect(retries.size).to eq(1)
+      expect(retries.first.payload).to include(leg: :userinfo, attempt: 1, status: 502, error: "StandardSingpass::Myinfo::ApiError")
+      expect(event(:userinfo).payload).to include(status: 200, attempts: 2)
+    end
+
+    it "carries no tokens, codes, or person data in any payload" do
+      stub_request(:get, userinfo_url).to_return(status: 200, body: "encrypted-userinfo-jwe")
+
+      client.get_person_data(auth_code: "secret-auth-code", code_verifier: "verifier", dpop_key_pair:)
+
+      dumped = events.map { |e| e.payload.inspect }.join
+      expect(dumped).not_to include("secret-auth-code", access_token, "S1234567A", "John Doe")
+    end
+  end
 end

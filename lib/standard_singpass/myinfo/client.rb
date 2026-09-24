@@ -72,20 +72,23 @@ module StandardSingpass
         # (see validate_id_token_acr); MyInfo's assurance level itself is
         # governed by Singpass server-side.
 
-        with_network_wrapper do
-          response = http_connection.post(@par_url) do |req|
-            req.headers["DPoP"] = Security.build_dpop_proof(
-              http_method: "POST",
-              url: T.must(@par_url),
-              key_pair: dpop_key_pair
-            )
-            req.headers["Content-Type"] = "application/x-www-form-urlencoded"
-            req.body = URI.encode_www_form(body)
+        instrument(:par) do |payload|
+          with_network_wrapper do
+            response = http_connection.post(@par_url) do |req|
+              req.headers["DPoP"] = Security.build_dpop_proof(
+                http_method: "POST",
+                url: T.must(@par_url),
+                key_pair: dpop_key_pair
+              )
+              req.headers["Content-Type"] = "application/x-www-form-urlencoded"
+              req.body = URI.encode_www_form(body)
+            end
+            payload[:status] = response.status
+            handle_par_response(response)
           end
-          handle_par_response(response)
+        rescue Faraday::Error => e
+          raise PARError.new("PAR endpoint unreachable: #{e.class}", transport: true)
         end
-      rescue Faraday::Error => e
-        raise PARError.new("PAR endpoint unreachable: #{e.class}", transport: true)
       end
 
       sig { params(request_uri: String).returns(String) }
@@ -151,20 +154,23 @@ module StandardSingpass
           )
         }
 
-        with_network_wrapper do
-          response = http_connection.post(@token_url) do |req|
-            req.headers["DPoP"] = Security.build_dpop_proof(
-              http_method: "POST",
-              url: T.must(@token_url),
-              key_pair: dpop_key_pair
-            )
-            req.headers["Content-Type"] = "application/x-www-form-urlencoded"
-            req.body = URI.encode_www_form(body)
+        instrument(:token) do |payload|
+          with_network_wrapper do
+            response = http_connection.post(@token_url) do |req|
+              req.headers["DPoP"] = Security.build_dpop_proof(
+                http_method: "POST",
+                url: T.must(@token_url),
+                key_pair: dpop_key_pair
+              )
+              req.headers["Content-Type"] = "application/x-www-form-urlencoded"
+              req.body = URI.encode_www_form(body)
+            end
+            payload[:status] = response.status
+            handle_token_response(response)
           end
-          handle_token_response(response)
+        rescue Faraday::Error => e
+          raise ApiError.new("MyInfo token endpoint unreachable: #{e.class}", transport: true)
         end
-      rescue Faraday::Error => e
-        raise ApiError.new("MyInfo token endpoint unreachable: #{e.class}", transport: true)
       end
 
       sig { params(access_token: String, dpop_key_pair: OpenSSL::PKey::EC).returns(T::Hash[String, T.untyped]) }
@@ -173,24 +179,27 @@ module StandardSingpass
         # is typically a circuit breaker; keeping retries inside means one user
         # attempt counts as one failure against the breaker instead of three,
         # so a single unlucky borrower can't trip a shared circuit on their own.
-        with_network_wrapper do
-          with_userinfo_retries do
-            # The DPoP proof carries a per-request jti/iat, so it is rebuilt on
-            # every attempt — replaying one would be rejected as a duplicate.
-            response = http_connection.get(@userinfo_url) do |req|
-              req.headers["Authorization"] = "DPoP #{access_token}"
-              req.headers["DPoP"] = Security.build_dpop_proof(
-                http_method: "GET",
-                url: T.must(@userinfo_url),
-                key_pair: dpop_key_pair,
-                access_token:
-              )
+        instrument(:userinfo) do |payload|
+          with_network_wrapper do
+            with_userinfo_retries(payload) do
+              # The DPoP proof carries a per-request jti/iat, so it is rebuilt on
+              # every attempt — replaying one would be rejected as a duplicate.
+              response = http_connection.get(@userinfo_url) do |req|
+                req.headers["Authorization"] = "DPoP #{access_token}"
+                req.headers["DPoP"] = Security.build_dpop_proof(
+                  http_method: "GET",
+                  url: T.must(@userinfo_url),
+                  key_pair: dpop_key_pair,
+                  access_token:
+                )
+              end
+              payload[:status] = response.status
+              handle_person_response(response, jwks_url: @userinfo_jwks_url)
             end
-            handle_person_response(response, jwks_url: @userinfo_jwks_url)
           end
+        rescue Faraday::Error => e
+          raise ApiError.new("MyInfo userinfo endpoint unreachable: #{e.class}", transport: true)
         end
-      rescue Faraday::Error => e
-        raise ApiError.new("MyInfo userinfo endpoint unreachable: #{e.class}", transport: true)
       end
 
       sig { params(id_token: T.nilable(String), nonce: T.nilable(String)).returns(T::Hash[String, T.untyped]) }
@@ -406,17 +415,26 @@ module StandardSingpass
       # in well under a second, whereas a timed-out attempt has already spent
       # the request budget and retrying it risks turning a slow page into a
       # gateway error. A transport failure therefore propagates on the first hit.
-      sig { params(block: T.proc.returns(T::Hash[String, T.untyped])).returns(T::Hash[String, T.untyped]) }
-      def with_userinfo_retries(&block)
+      #
+      # Each retry emits a `standard_singpass.retry` notification; the
+      # enclosing `standard_singpass.userinfo` payload records `attempts`.
+      sig { params(payload: T::Hash[Symbol, T.untyped], block: T.proc.returns(T::Hash[String, T.untyped])).returns(T::Hash[String, T.untyped]) }
+      def with_userinfo_retries(payload, &block)
         attempt = 0
         begin
           attempt += 1
+          payload[:attempts] = attempt
           block.call
         rescue ApiError => e
           raise unless RETRYABLE_USERINFO_STATUSES.include?(e.status)
           raise if attempt >= USERINFO_MAX_ATTEMPTS
 
-          sleep(userinfo_retry_delay(attempt))
+          delay = userinfo_retry_delay(attempt)
+          ActiveSupport::Notifications.instrument(
+            "standard_singpass.retry",
+            leg: :userinfo, attempt:, status: e.status, error: e.class.name, delay:
+          )
+          sleep(delay)
           retry
         end
       end
@@ -484,6 +502,48 @@ module StandardSingpass
           f.options.open_timeout = 10
           f.options.timeout = 15
         end
+      end
+
+      # Emits `standard_singpass.<event>` via ActiveSupport::Notifications
+      # around one leg of the flow. The payload is deliberately PII-free:
+      #
+      #   :duration  — wall time in milliseconds (Float)
+      #   :status    — HTTP status of the (last) Singpass response, or nil
+      #   :error     — class name of the error raised, or nil on success
+      #   :transport — true when Singpass was never reached
+      #   :attempts  — (userinfo only) attempts made, including retries
+      #
+      # Never tokens, codes, bodies, URLs, or error messages. The error is
+      # captured inside the instrument block and re-raised outside it so
+      # ActiveSupport does not add its own `:exception` entry (which would
+      # carry the message) to the payload.
+      sig do
+        params(
+          event: Symbol,
+          block: T.proc.params(payload: T::Hash[Symbol, T.untyped]).returns(T.untyped)
+        ).returns(T.untyped)
+      end
+      def instrument(event, &block)
+        payload = T.let({ status: nil, error: nil, transport: false }, T::Hash[Symbol, T.untyped])
+        error = T.let(nil, T.nilable(Exception))
+        result = ActiveSupport::Notifications.instrument("standard_singpass.#{event}", payload) do
+          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          begin
+            block.call(payload)
+          rescue => e
+            error = e
+            payload[:error] = e.class.name
+            if e.is_a?(Error)
+              payload[:status] ||= e.status
+              payload[:transport] = e.transport?
+            end
+            nil
+          ensure
+            payload[:duration] = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000.0
+          end
+        end
+        raise error if error
+        result
       end
 
       # Wraps the given block in the configured network_wrapper. Default is

@@ -235,6 +235,37 @@ This covers every leg — PAR, token exchange, userinfo, and the JWKS fetches th
 
 **Never classify by matching the message text** — it is not a stable interface. That is exactly what `transport?` and `status` exist to replace.
 
+## Instrumentation
+
+The client emits [`ActiveSupport::Notifications`](https://api.rubyonrails.org/classes/ActiveSupport/Notifications.html) events, one per leg of the flow:
+
+| Event | When |
+| --- | --- |
+| `standard_singpass.par` | Pushed Authorization Request |
+| `standard_singpass.token` | Token exchange |
+| `standard_singpass.userinfo` | Userinfo fetch, decrypt, and verify (spans all retry attempts) |
+| `standard_singpass.retry` | Each automatic userinfo retry, just before the backoff sleep |
+
+`par` / `token` / `userinfo` payloads:
+
+- `duration` — wall time in milliseconds (Float)
+- `status` — HTTP status of the (last) Singpass response, or `nil` when none arrived
+- `error` — class name of the raised error, or `nil` on success (the error is re-raised as usual)
+- `transport` — `true` when Singpass was never reached
+- `attempts` — (`userinfo` only) attempts made, including retries
+
+`retry` payloads: `leg` (`:userinfo`), `attempt` (the attempt that failed), `status`, `error`, `delay` (seconds about to be slept).
+
+Payloads are deliberately PII-free: no tokens, authorization codes, response bodies, URLs, or error messages — only the class name. ActiveSupport's own `:exception` / `:exception_object` keys (which would carry the message) are not added.
+
+```ruby
+ActiveSupport::Notifications.subscribe(/\Astandard_singpass\./) do |event|
+  StatsD.distribution("singpass.#{event.name.delete_prefix("standard_singpass.")}",
+                      event.payload[:duration] || 0,
+                      tags: { status: event.payload[:status], error: event.payload[:error] })
+end
+```
+
 ## License
 
 The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
