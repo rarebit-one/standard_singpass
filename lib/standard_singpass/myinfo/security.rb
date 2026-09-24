@@ -5,21 +5,6 @@ module StandardSingpass
     class Security
       extend T::Sig
 
-      # Deprecated aliases (0.4.0). Security used to raise its own
-      # DecryptionError / ValidationError, which the client then translated
-      # into the public Myinfo errors. It now raises the public errors
-      # directly: JWE failures raise `Myinfo::DecryptionError`, JWS / JWKS
-      # failures raise `Myinfo::SignatureError` (carrying the JWKS response's
-      # `status`, or `transport?` when the JWKS host was unreachable, so an
-      # outage stays distinguishable from a genuinely bad signature).
-      #
-      # The old names still resolve — to the same classes, so an existing
-      # `rescue Security::ValidationError` keeps catching — and will be
-      # removed in a future minor release.
-      DecryptionError = Myinfo::DecryptionError
-      ValidationError = Myinfo::SignatureError
-      deprecate_constant :DecryptionError, :ValidationError
-
       JWKS_CACHE_TTL = T.let(1.hour, ActiveSupport::Duration)
 
       # Generates a PKCE code verifier and code challenge pair (S256).

@@ -10,32 +10,8 @@ RSpec.describe "StandardSingpass error hierarchy" do
     end
   end
 
-  describe "deprecated Security error constants" do
-    # Silence Ruby's constant-deprecation warning for these lookups.
-    around do |example|
-      original = Warning[:deprecated]
-      Warning[:deprecated] = false
-      example.run
-    ensure
-      Warning[:deprecated] = original
-    end
-
-    it "aliases Security::DecryptionError to the public DecryptionError" do
-      expect(StandardSingpass::Myinfo::Security::DecryptionError).to be(StandardSingpass::Myinfo::DecryptionError)
-    end
-
-    it "aliases Security::ValidationError to the public SignatureError" do
-      expect(StandardSingpass::Myinfo::Security::ValidationError).to be(StandardSingpass::Myinfo::SignatureError)
-    end
-
-    it "keeps an old `rescue Security::ValidationError` catching what Security raises" do
-      expect {
-        begin
-          raise StandardSingpass::Myinfo::SignatureError, "bad sig"
-        rescue StandardSingpass::Myinfo::Security::ValidationError => e
-          raise "caught: #{e.message}"
-        end
-      }.to raise_error(RuntimeError, "caught: bad sig")
-    end
+  it "no longer defines the Security::DecryptionError / Security::ValidationError aliases (removed in 0.5)" do
+    expect(StandardSingpass::Myinfo::Security.const_defined?(:DecryptionError, false)).to be(false)
+    expect(StandardSingpass::Myinfo::Security.const_defined?(:ValidationError, false)).to be(false)
   end
 end

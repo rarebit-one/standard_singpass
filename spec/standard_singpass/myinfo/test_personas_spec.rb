@@ -32,8 +32,7 @@ RSpec.describe StandardSingpass::Myinfo::TestPersonas do
     expect { described_class.fetch("nope") }.to raise_error(described_class::UnknownPersona)
   end
 
-  it "deprecates reload!" do
-    expect(StandardSingpass.deprecator).to receive(:warn).with(/reload! is deprecated/)
-    expect(described_class.reload!).to include("default")
+  it "no longer defines reload! (removed in 0.5)" do
+    expect(described_class).not_to respond_to(:reload!)
   end
 end

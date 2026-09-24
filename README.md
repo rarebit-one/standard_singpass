@@ -215,7 +215,7 @@ All errors descend from `StandardSingpass::Myinfo::Error`, which in turn descend
 - `RateLimitError` — Singpass returned HTTP 429
 - `ConfigurationError` — gem is misconfigured (e.g. invalid ACR URN)
 
-`Security` raises `DecryptionError` / `SignatureError` directly. The pre-0.4.0 `Security::DecryptionError` / `Security::ValidationError` constants are deprecated aliases of those two classes.
+`Security` raises `DecryptionError` / `SignatureError` directly. The pre-0.4.0 `Security::DecryptionError` / `Security::ValidationError` aliases were removed in 0.5.0; rescue `DecryptionError` / `SignatureError` (or `StandardSingpass::Myinfo::Error`).
 
 `DecryptionError` and `SignatureError` usually indicate a key/cert misconfiguration rather than an upstream outage. **Usually, not always:** verifying a signature requires fetching Singpass's JWKS, so a JWKS host that is down surfaces as a `SignatureError` (or an `AuthenticationError` on the ID-token leg) too. Those carry the JWKS response's `status` / `transport?`, so ask `FailureClassifier` rather than deciding by class — including when choosing what to feed a circuit breaker.
 
@@ -301,7 +301,7 @@ bundle exec srb tc         # Sorbet typecheck — keep it green
   )
   ```
 
-  `standard_singpass/testing` is not loaded by `require "standard_singpass"`. The old `StandardSingpass::Myinfo::EcdhJwe.encrypt` still works but is deprecated.
+  `standard_singpass/testing` is not loaded by `require "standard_singpass"`. The old `StandardSingpass::Myinfo::EcdhJwe.encrypt` forwarder was removed in 0.5.0.
 - **Specs that mutate configuration** should call `StandardSingpass::Myinfo.reset_configuration!` afterwards.
 
 ## License

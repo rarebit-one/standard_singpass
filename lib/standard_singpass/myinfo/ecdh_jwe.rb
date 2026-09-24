@@ -41,31 +41,6 @@ module StandardSingpass
         "A256GCM" => 32
       }.freeze, T::Hash[String, Integer])
 
-      # Deprecated (0.4.0): encryption is only ever needed to build fixtures
-      # in tests — Singpass encrypts, we decrypt. It lives in
-      # `StandardSingpass::Testing::EcdhJwe` now (`require
-      # "standard_singpass/testing"`); this forwarder will be removed in a
-      # future minor release.
-      sig do
-        params(
-          payload: String,
-          public_key: OpenSSL::PKey::EC,
-          alg: String,
-          enc: String,
-          kid: T.nilable(String),
-          apu: T.nilable(String),
-          apv: T.nilable(String)
-        ).returns(String)
-      end
-      def self.encrypt(payload, public_key:, alg:, enc:, kid: nil, apu: nil, apv: nil)
-        StandardSingpass.deprecator.warn(
-          "StandardSingpass::Myinfo::EcdhJwe.encrypt is deprecated and will be removed; " \
-          "require \"standard_singpass/testing\" and use StandardSingpass::Testing::EcdhJwe.encrypt instead."
-        )
-        require "standard_singpass/testing"
-        StandardSingpass::Testing::EcdhJwe.encrypt(payload, public_key:, alg:, enc:, kid:, apu:, apv:)
-      end
-
       # Decrypts a compact-serialized JWE string.
       sig { params(jwe_string: String, private_key: OpenSSL::PKey::EC).returns(String) }
       def self.decrypt(jwe_string, private_key:)

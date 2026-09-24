@@ -31,18 +31,6 @@ module StandardSingpass
         @data ||= JSON.parse(fixture_path.read).freeze
       end
 
-      # Deprecated (0.4.0) — unused by any consumer, and will be removed in a
-      # future minor release. Personas are read once per process; restart the
-      # process (or point `personas_path` at a different file) to pick up
-      # edits.
-      def self.reload!
-        StandardSingpass.deprecator.warn(
-          "StandardSingpass::Myinfo::TestPersonas.reload! is deprecated and will be removed."
-        )
-        @data = nil
-        data
-      end
-
       def self.fixture_path
         configured = StandardSingpass::Myinfo.configuration.personas_path
         configured ? Pathname.new(configured) : GEM_FIXTURE_PATH
