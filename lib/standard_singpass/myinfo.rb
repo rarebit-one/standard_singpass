@@ -9,6 +9,7 @@ require "digest"
 require "securerandom"
 require "aes_key_wrap"
 
+require "standard_singpass/error"
 require "standard_singpass/myinfo/error"
 require "standard_singpass/myinfo/failure_classifier"
 require "standard_singpass/myinfo/configuration"

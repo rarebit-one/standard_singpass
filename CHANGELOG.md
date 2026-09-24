@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An unsupported JWE `enc` now raises `StandardSingpass::Myinfo::DecryptionError`.** `EcdhJwe::InvalidAlgorithm` (a bare `StandardError`) used to escape `Security.decrypt_jwe`, bypassing every `rescue StandardSingpass::Myinfo::Error` in a host.
+
 ### Added
 
 - **`StandardSingpass.configure` / `StandardSingpass.config`** — top-level aliases for `StandardSingpass::Myinfo.configure` / `.configuration`, matching the sibling `standard_*` gems' `Gem.configure` / `Gem.config` convention. `StandardSingpass::Myinfo.config` is also available. The existing `Myinfo.configure` / `Myinfo.configuration` entry points are unchanged.
 
 ### Changed
+
+- **`Security` raises the public errors directly; `Security::DecryptionError` / `Security::ValidationError` are deprecated aliases.** JWE failures now raise `StandardSingpass::Myinfo::DecryptionError` and JWS / JWKS-fetch failures raise `StandardSingpass::Myinfo::SignatureError` (still carrying the JWKS response's `status`, or `transport?` when the JWKS host was unreachable). The old constants resolve to those same classes — `Security::ValidationError` *is* `SignatureError` — so an existing `rescue Security::ValidationError` keeps catching; referencing them emits Ruby's constant-deprecation warning (when `Warning[:deprecated]` is on) and they will be removed in a future minor. The client no longer needs to translate them on the userinfo leg; on the ID-token leg they are still wrapped in `AuthenticationError` exactly as before.
+- **New gem-wide root `StandardSingpass::Error`**, which `StandardSingpass::Myinfo::Error` now inherits from (previously `StandardError`). Existing `rescue StandardSingpass::Myinfo::Error` is unaffected.
 
 - **Breaking: `Configuration::DEFAULT_SCOPE` is now the minimal `"openid uinfin name"`.** It used to be one consuming app's 42-entry underwriting scope — including `noa`, `noa-basic` and `noahistory-basic`, which Singpass review flagged as redundant collection — so any host that never set `c.scope` silently requested all of it. Which attributes to collect is a host decision (PDPA Purpose Limitation) that must match the host's own developer-portal approval list, and the gem holds no domain policy. A minimal default was chosen over a "scope is required" boot error because `openid uinfin name` is a subset of every MyInfo approval: a host that forgets to set it gets a working flow that collects the least data possible, rather than over-collecting or failing to boot in development and test. The install generator now sets `c.scope` explicitly.
 

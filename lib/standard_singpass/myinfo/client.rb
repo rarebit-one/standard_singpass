@@ -220,9 +220,9 @@ module StandardSingpass
 
         decrypted = Security.decrypt_jwe(id_token, private_keys: @encryption_keys)
         Security.validate_jws(decrypted, jwks_url: T.must(@jwks_url))
-      rescue Security::DecryptionError
+      rescue DecryptionError
         raise AuthenticationError, "ID token decryption failed"
-      rescue Security::ValidationError => e
+      rescue SignatureError => e
         # Carry status/transport across the re-raise: a JWKS endpoint that is
         # down produces the same exception here as a genuinely bad signature,
         # and only these attributes tell them apart.
@@ -463,15 +463,13 @@ module StandardSingpass
         "(non-JSON body, #{body.bytesize} bytes)"
       end
 
+      # Security raises the public DecryptionError / SignatureError directly
+      # (SignatureError carrying the JWKS response's status / transport?), so
+      # there is nothing to translate on the userinfo leg.
       sig { params(jwe_body: String, jwks_url: T.nilable(String)).returns(T::Hash[String, T.untyped]) }
       def decrypt_and_validate_person(jwe_body, jwks_url:)
         decrypted = Security.decrypt_jwe(jwe_body, private_keys: @encryption_keys)
         Security.validate_jws(decrypted, jwks_url: T.must(jwks_url))
-      rescue Security::DecryptionError => e
-        raise DecryptionError, e.message
-      rescue Security::ValidationError => e
-        # As above — a JWKS-host outage must not be reported as a bad signature.
-        raise SignatureError.new(e.message, status: e.status, transport: e.transport?)
       end
 
       sig { void }
