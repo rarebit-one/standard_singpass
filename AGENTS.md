@@ -10,211 +10,110 @@ The top-level namespace is `StandardSingpass`; MyInfo lives at
 `StandardSingpass::Myinfo::*` to leave room for a future
 `StandardSingpass::Auth::*` (Sign-in-with-Singpass) submodule.
 
-## Quick Reference
+## Scope
+
+`standard_singpass` packages Singpass MyInfo (and, in future, Sign-in-with-Singpass) primitives as a reusable Rails engine:
+
+- FAPI 2.0 OAuth client with PKCE + DPoP + `private_key_jwt`
+- Native ECDH-ES JWE decryption (the `jwt` gem does not support ECDH-ES)
+- JWS signature verification with JWKS caching and one-shot rotation retry
+- Person-data parser (40+ fields from FAPI 2.0 v5 userinfo)
+- JWKS generation + validation tooling
+
+**Not in scope:** persistence (the host owns the MyInfo record model), business orchestration (callback handling, biodata forms), UI, or any domain-specific identity/loan logic. The gem is deliberately library-only.
+
+## Public API
+
+- `lib/standard_singpass/myinfo.rb`: `Myinfo.configure`, `public_jwks`, `reset_configuration!`.
+- `lib/standard_singpass/myinfo/client.rb`: `push_authorization_request`,
+  `build_authorize_redirect`, `get_person_data` (PAR, token, userinfo).
+- `lib/standard_singpass/myinfo/security.rb`: PKCE, DPoP, JWE dispatch, JWS validation.
+- `lib/standard_singpass/myinfo/person_data_parser.rb`: `PersonDataParser.call`.
+- `lib/standard_singpass/myinfo/failure_classifier.rb`: `FailureClassifier`.
+- `lib/standard_singpass/testing.rb`: test-only JWE encryptor, not loaded by default.
+- `lib/tasks/standard_singpass.rake` and `lib/generators/standard_singpass/install/`.
+
+## Commands
 
 ```bash
-# Run the full spec suite
-bundle exec rspec
-
-# Run a single spec file
-bundle exec rspec spec/standard_singpass/myinfo/client_spec.rb
-
-# Sorbet type check (RBIs are committed under sorbet/rbi/gems/)
-bundle exec srb tc
-
-# Regenerate gem RBIs after a bundle update
-bundle exec tapioca gems
-
-# Lint
-bin/rubocop
-bin/rubocop -A   # auto-fix
-
-# Security checks
+bundle exec rspec          # dummy app, in-memory SQLite; the gem has no migrations
+bundle exec srb tc         # Sorbet; RBIs are committed under sorbet/rbi/gems/
+bundle exec tapioca gems   # regenerate gem RBIs after a bundle update
+bin/rubocop -A
 bundle exec brakeman --no-pager
 bundle exec bundler-audit --update
-
-# Generate a fresh private JWKS (run on a trusted machine — output contains
-# private key material).
-bin/rails standard_singpass:myinfo:generate_jwks > private-jwks.json
-cat private-jwks.json | bin/rails standard_singpass:myinfo:validate_jwks
 ```
 
-The dummy app under `spec/dummy/` is in-memory SQLite. The gem has no
-migrations of its own.
+## Invariants
 
-## Project Structure
-
-```
-standard_singpass/
-├── lib/standard_singpass/
-│   ├── engine.rb                       # Rake tasks + after_initialize hooks
-│   ├── version.rb
-│   ├── error.rb                        # StandardSingpass::Error (gem-wide root)
-│   ├── testing.rb                      # Test-only: Testing::EcdhJwe.encrypt
-│   ├── myinfo.rb                       # Myinfo.configure / public_jwks
-│   └── myinfo/
-│       ├── configuration.rb            # Block-style config object (minimal DEFAULT_SCOPE)
-│       ├── client.rb                   # FAPI 2.0 OAuth client (PAR + token + userinfo)
-│       ├── security.rb                 # PKCE, DPoP, JWE dispatch, JWS validation
-│       ├── ecdh_jwe.rb                 # Native ECDH-ES+A256KW JWE decryption
-│       ├── person_data_parser.rb       # FAPI 2.0 v5 userinfo → 40+ field hash
-│       ├── jwks_generator.rb           # Generate + validate the private JWKS
-│       ├── test_personas.rb            # Load persona fixtures for mock flows
-│       └── error.rb                    # Error class hierarchy
-├── lib/tasks/
-│   └── standard_singpass.rake          # generate_jwks / validate_jwks
-├── lib/generators/standard_singpass/
-│   └── install/                        # `rails g standard_singpass:install`
-├── fixtures/myinfo-personas.json       # Default persona set
-└── spec/
-    ├── dummy/                          # Bare Rails app, in-memory SQLite
-    ├── standard_singpass/myinfo/       # Per-class specs + full_flow_spec
-    ├── generators/standard_singpass/
-    ├── spec_helper.rb
-    └── rails_helper.rb
-```
-
-## Key Patterns
-
-### Configuration DSL
-
-`StandardSingpass::Myinfo.configure { |c| ... }` mutates a single
-`StandardSingpass::Myinfo::Configuration` instance held in `@configuration`.
-Hosts pass `client_id`, `redirect_url`, `private_jwks_json`, optional
-`minimum_acr`, optional `network_wrapper` (e.g. a circuit-breaker lambda),
-and `environment` (`:production` / `:staging`). The configuration object
-does the env-vs-staging endpoint selection — hosts never hardcode URLs.
-
-Tests can call `StandardSingpass::Myinfo.reset_configuration!` to drop the
-memoized config between examples.
-
-### Pluggable network wrapper
-
-The gem ships no resilience layer of its own. Hosts compose one in via
-`c.network_wrapper = ->(&blk) { Resilience.run(&blk) }`. The wrapper
-sees Faraday calls only — JWE/JWS errors propagate untouched so a
-breaker does not trip on key/cert misconfiguration.
-
-### Sorbet sigils
-
-Most lib files declare `# typed: strict` with `sig {}` annotations. The
-gem ships `sorbet-runtime` as a runtime dep so consumers do not have to
-opt into Sorbet themselves; the sigs become a no-op when consumers do not
-run `srb tc`. RBIs for the gem's own runtime deps are committed under
-`sorbet/rbi/gems/` and regenerated via `bundle exec tapioca gems`.
-
-## Common Workflows
-
-### Initiating a MyInfo flow
-
-1. Generate per-request artefacts (PKCE, DPoP key, state, nonce) via
-   `StandardSingpass::Myinfo::Security.{generate_pkce_pair,
-   generate_ephemeral_key_pair}` and `SecureRandom`.
-2. `StandardSingpass::Myinfo::Client.new.push_authorization_request(...)`
-   returns a `request_uri`.
-3. Build the authorize redirect with
-   `client.build_authorize_redirect(request_uri:)`.
-4. Persist the PKCE verifier, state, nonce, and DPoP key in the session
-   so the callback handler can pick them back up.
-
-### Handling the callback
-
-5. `client.get_person_data(auth_code:, code_verifier:, dpop_key_pair:,
-   nonce:)` returns `{ person_data:, id_token_acr: }`.
-6. `StandardSingpass::Myinfo::PersonDataParser.call(person_data)` flattens
-   into a 40+ key hash the host persists (typically encrypted at rest).
-
-### Rotating the private JWKS
-
-7. Run `bin/rails standard_singpass:myinfo:generate_jwks` on a trusted
-   machine. Capture the JSON to your secret manager.
-8. Update `MYINFO_PRIVATE_JWKS` (or whatever env var the host wires into
-   `c.private_jwks_json`).
-9. Confirm the host's public JWKS endpoint reflects the new kids with no
-   `d` field.
-
-## Testing
-
-- `spec/dummy/` boots a minimal Rails app. No engine routes, no models.
-- WebMock disables outbound HTTP (`disable_net_connect!`); specs that
-  exercise the client stub Faraday directly.
-- `ActiveSupport::Testing::TimeHelpers` is included globally — DPoP /
-  client-assertion specs use `freeze_time` to assert iat/exp.
-- Specs that mutate the global `Myinfo.configuration` should call
-  `reset_configuration!` in an `after` block.
-- The full-flow spec at `spec/standard_singpass/myinfo/full_flow_spec.rb`
-  walks PAR → token → userinfo → JWE decrypt → JWS validate → parse using
-  `StandardSingpass::Testing::EcdhJwe.encrypt` (from
-  `require "standard_singpass/testing"`, loaded in `rails_helper.rb`) to
-  construct payloads. Update it
-  whenever the public surface of `Client` changes.
-
-## Error Class Taxonomy
-
-All errors descend from `StandardSingpass::Myinfo::Error`, which descends
-from the gem-wide `StandardSingpass::Error`. `Security` raises these public
-classes directly. The pre-0.4.0 `Security::DecryptionError` /
-`Security::ValidationError` aliases were removed in 0.5.0 (referencing them
-raises `NameError`); rescue `DecryptionError` / `SignatureError`.
-
-| Class                  | Meaning                                                |
-|------------------------|--------------------------------------------------------|
-| `AuthenticationError`  | ID token / token exchange rejected (caller/config bug) |
-| `ApiError`             | Endpoint reachable, non-2xx response                   |
-| `PARError`             | Pushed authorization request failed                    |
-| `DecryptionError`      | JWE decryption failed (key misconfig)                  |
-| `SignatureError`       | JWS verification failed (key misconfig)                |
-| `RateLimitError`       | Singpass returned HTTP 429                             |
-| `ConfigurationError`   | Gem is misconfigured (e.g. invalid ACR URN)            |
-
-`DecryptionError` and `SignatureError` usually indicate key/cert
-misconfiguration, but a JWKS-host outage also surfaces as `SignatureError`
-(with `status` / `transport?` set) — classify with `FailureClassifier`.
-
-## Security Notes
-
-- Private JWKS keys live in env vars / secret managers — never the repo.
-  The `validate_jwks` rake task refuses public-only keys (missing `d`).
-- `body_excerpt` in `Client` only surfaces a fixed allowlist of FAPI /
-  OAuth error fields (`error`, `error_description`, `trace_id`, `id`,
-  `state`) to error messages — Singpass error payloads can carry NRIC /
-  email / other PII alongside the OAuth fields.
+- **No hardcoded Singpass URLs.** The configuration object does the
+  env-vs-staging endpoint selection from `environment`.
+- **No resilience layer of its own.** Hosts pass `network_wrapper`, which sees
+  Faraday calls only, so JWE/JWS errors propagate untouched and a breaker does
+  not trip on key/cert misconfiguration.
 - `SAFE_ERROR_FIELDS` is the load-bearing allowlist; do not widen it
   without auditing what Singpass returns in error bodies.
-- `bundle exec brakeman --no-pager` and `bundle exec bundler-audit --update`
-  run as part of the pre-push lefthook checks.
+  (Singpass error payloads can carry NRIC / email / other PII.)
+- Private JWKS keys live in env vars / secret managers — never the repo.
+  The `validate_jwks` rake task refuses public-only keys (missing `d`).
+- `sorbet-runtime` is a runtime dependency so consumers need not adopt Sorbet;
+  keep `# typed: strict` + `sig {}` on lib files.
+- All errors descend from `StandardSingpass::Myinfo::Error`, which descends
+  from the gem-wide `StandardSingpass::Error`. The pre-0.4.0
+  `Security::DecryptionError` / `Security::ValidationError` aliases are gone
+  (since 0.5.0); rescue `DecryptionError` / `SignatureError`.
 
-## Key Files
+## Footguns
 
-| File                                                  | Purpose                                          |
-|-------------------------------------------------------|--------------------------------------------------|
-| `lib/standard_singpass.rb`                            | Entrypoint; `configure` / `config` / `deprecator`|
-| `lib/standard_singpass/engine.rb`                     | Rails engine: rake tasks, boot hooks             |
-| `lib/standard_singpass/testing.rb`                    | Test-only JWE encryptor (not loaded by default)  |
-| `lib/standard_singpass/myinfo.rb`                     | `configure`, `public_jwks`, error classes        |
-| `lib/standard_singpass/myinfo/configuration.rb`       | Config object, DEFAULT_SCOPE, private JWKS parser|
-| `lib/standard_singpass/myinfo/client.rb`              | FAPI 2.0 OAuth client                            |
-| `lib/standard_singpass/myinfo/security.rb`            | PKCE, DPoP, JWE dispatch, JWS validation         |
-| `lib/standard_singpass/myinfo/ecdh_jwe.rb`            | Native ECDH-ES JWE decryption                    |
-| `lib/standard_singpass/myinfo/person_data_parser.rb`  | Userinfo → host-shaped hash                      |
-| `lib/standard_singpass/myinfo/jwks_generator.rb`      | Generate + validate private JWKS                 |
-| `lib/standard_singpass/myinfo/test_personas.rb`       | Persona fixture loader                           |
-| `lib/tasks/standard_singpass.rake`                    | Operational rake tasks                           |
-| `lib/generators/standard_singpass/install/`           | Install generator (initializer scaffold)         |
+- A JWKS-host outage also surfaces as `SignatureError` (with `status` /
+  `transport?` set), not only key misconfiguration: classify with `FailureClassifier`.
+- `bin/rails standard_singpass:myinfo:generate_jwks` prints private key material;
+  run it on a trusted machine only.
+- The full-flow spec at `spec/standard_singpass/myinfo/full_flow_spec.rb` must be
+  updated whenever the public surface of `Client` changes.
+- Specs that mutate the global `Myinfo.configuration` should call
+  `reset_configuration!` in an `after` block.
+- Pre-push lefthook (`lefthook.yml`) runs rubocop, brakeman and rspec;
+  bundler-audit runs only in CI. SimpleCov enforces 90% line / 75% branch.
 
-## Dependencies
+## Workspace rules
 
-- **rails** — `>= 8.1, < 9`
-- **faraday** — `>= 2.0, < 3` (HTTP client)
-- **jwt** — `>= 2.7, < 4` (JWS/JWT signing + verification)
-- **aes_key_wrap** — `~> 1.1` (RFC 3394, used by ECDH-ES+A256KW)
-- **sorbet-runtime** — `~> 0.5` (sigils evaluated at load time)
+- **Worktrees only.** Edit in `.worktrees/<name>/`, never in the main checkout.
+  `.agents/hooks.toml` registers `enforce-worktree` (Edit/Write/NotebookEdit) and
+  `enforce-worktree-bash` (Bash writes into the main checkout: `sed -i`, `tee`,
+  redirects, `cp`/`mv`, `git apply`, `rsync`); scripts are in `.agents/hooks/`.
+  There are no opt-outs; CI checkouts are the only exception.
 
-Dev / test:
+```bash
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@')
+DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
+git fetch origin "$DEFAULT_BRANCH"
+git worktree add .worktrees/<name> -b <branch-name> "origin/$DEFAULT_BRANCH"
+```
 
-- **rspec-rails** — test framework
-- **webmock** — outbound HTTP isolation
-- **rubocop-rails-omakase** — linting
-- **brakeman**, **bundler-audit** — security scanners
-- **simplecov** — coverage reporting (90% line / 75% branch minimum)
-- **sorbet**, **tapioca** — type checking + RBI generation
+Then work inside `.worktrees/<name>/` for the rest of the session.
+
+**Naming:** Use a task slug (e.g., `.worktrees/fix-auth-timeout`) or today's date (e.g., `.worktrees/2026-04-01`).
+
+- **Signed commits only.** `enforce-signed-commits` adds `-S` to `git commit`; if
+  signing fails, stop and report it, and never pass `--no-gpg-sign`.
+
+See the `/worktree` and `/start` skills for full conventions and flags.
+
+## Where to look
+
+- `docs/agents/architecture.md`: layout, configuration DSL, error taxonomy, key files, dependencies.
+- `docs/agents/workflows.md`: initiating a flow, handling the callback, rotating the JWKS.
+- `docs/agents/development.md`: the full command reference and test conventions.
+- `docs/agents/security.md`: PII allowlist, key handling, security gates.
+- `README.md`: host-facing installation and configuration.
+
+## Consumers
+
+`standard_singpass` is consumed by one app:
+
+- `fundbright-web` (in the sibling `~/Workspace/fundbright/` workspace, org `fundbright` — not beside this repo)
+
+Singpass MyInfo is a fundbright-only integration. **This list is deliberately narrower than "the workspace's web apps"**, which is what this section used to say — that phrasing reads as "all five" and would send a rollout at four apps that do not consume the gem at all.
+
+After publishing a new version via `/publish-gem`, roll it out with the workspace-level `/rollout-gem standard_singpass [<version>]` skill (defined at the rarebit-one workspace root). The canonical consumer matrix — including version constraints — lives in that skill's `SKILL.md`; the list here is a summary of it, kept in the bulleted form that `.claude/scripts/check-gem-family-drift.sh` compares against the matrix.
