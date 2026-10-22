@@ -150,6 +150,26 @@ RSpec.describe StandardSingpass::Myinfo::MockModeGuard do
         expect(described_class.production_deploy?).to be(true)
       end
 
+      it "matches case-sensitively, so a capitalised name fails closed" do
+        ENV["APP_ENVIRONMENT"] = "Staging"
+
+        expect(described_class.production_deploy?).to be(true)
+      end
+
+      it "ignores surrounding whitespace" do
+        ENV["APP_ENVIRONMENT"] = "  staging "
+
+        expect(described_class.production_deploy?).to be(false)
+      end
+
+      it "treats an empty value as unset and falls back to Rails.env" do
+        ENV["APP_ENVIRONMENT"] = ""
+
+        expect(described_class.production_deploy?).to be(true)
+        as_rails_env("test")
+        expect(described_class.production_deploy?).to be(false)
+      end
+
       it "fails closed on an unrecognised value" do
         ENV["APP_ENVIRONMENT"] = "prod"
 
