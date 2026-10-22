@@ -60,8 +60,9 @@ StandardSingpass::Myinfo.configure do |c|
   c.mock_mode = ENV["MYINFO_MOCK_MODE"].present?
 
   # Optional: how the gem decides whether this deploy is real production, for
-  # the mock-mode guard. Defaults to Rails.env.production?.
-  # c.production_env_detector = -> { AppEnv.production? }
+  # the mock-mode guard. Defaults to APP_ENVIRONMENT (failing closed), then
+  # Rails.env.production? — see "Mock mode" below.
+  # c.production_env_detector = -> { ... }
 end
 ```
 
@@ -115,21 +116,19 @@ opt-out — a guard you can forget to wire is a guard that isn't there.
 | Anything else | yes | Silent. |
 | Any | no | Silent. |
 
-By default "production" means `Rails.env.production?`. Staging and preview
-deploys routinely run `RAILS_ENV=production` while being entirely legitimate
-places to enable mock mode, so hosts that distinguish a physical deploy
-environment from `RAILS_ENV` should say so:
+"Production" follows the estate's `APP_ENVIRONMENT` convention (the same rule
+standard_id, standard_audit and standard_health use): when `APP_ENVIRONMENT` is
+set, only `staging`, `preview`, `development` and `test` are non-production and
+any other value (a typo included) is production, so a mis-set variable fails
+closed; when it is unset, `Rails.env.production?` decides. Staging and preview
+deploys routinely run `RAILS_ENV=production`, so with `APP_ENVIRONMENT=staging`
+they land in the production-like tier, where mock mode boots and is reported,
+with no extra wiring.
 
-```ruby
-# Mock mode stays legal on a physically-staging box, still refused on real prod.
-c.production_env_detector = -> { AppEnv.production? }
-```
-
-`production_env_detector` takes no arguments and returns a boolean; when `nil`
-(the default) the gem falls back to `Rails.env.production?`, so existing
-consumers are unaffected. The production-like tier reports through
-`Rails.error` rather than a specific error tracker, so whatever the host has
-subscribed (Sentry included) picks it up.
+`config.production_env_detector` (a callable taking no arguments, returning a
+boolean) overrides that, for a host with a different discriminator. The
+production-like tier reports through `Rails.error` rather than a specific error
+tracker, so whatever the host has subscribed (Sentry included) picks it up.
 
 ## Initiating the flow
 

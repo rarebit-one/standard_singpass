@@ -27,10 +27,13 @@ module StandardSingpass
     # loud-but-non-fatal signal instead.
     #
     # "Production deploy" is decided by `config.production_env_detector` when
-    # set, falling back to `Rails.env.production?`. The gem cannot know about
-    # a host's own environment discriminator (`APP_ENVIRONMENT` and friends),
-    # and deliberately does not read ENV itself — the callable is the seam.
-    # This mirrors `StandardId`'s `production_env_detector`.
+    # set, else by the estate's APP_ENVIRONMENT convention (shared with
+    # standard_id, standard_audit and standard_health): APP_ENVIRONMENT when it
+    # is set, where only staging, preview, development and test are
+    # non-production and any other value (a typo included) is production, so a
+    # mis-set variable fails closed; else `Rails.env.production?`. A staging box
+    # with RAILS_ENV=production and APP_ENVIRONMENT=staging is therefore
+    # production-*like*, not production, with no detector wiring.
     #
     # Wired automatically from the engine's `after_initialize`, so a host gets
     # the guard by configuring `mock_mode` at all. There is no opt-out: a
@@ -49,14 +52,19 @@ module StandardSingpass
         end
       end
 
+      # APP_ENVIRONMENT values that are not production; anything else is.
+      NON_PRODUCTION_APP_ENVIRONMENTS = T.let(%w[staging preview development test].freeze, T::Array[String])
+
       # Whether this deploy is real production for the purpose of the guard.
-      # Defers to config.production_env_detector when set (hosts that
-      # distinguish a physical deploy environment from RAILS_ENV), else falls
-      # back to Rails.env.production?.
+      # Defers to config.production_env_detector when set, else to
+      # APP_ENVIRONMENT (failing closed), else Rails.env.production?.
       sig { returns(T::Boolean) }
       def self.production_deploy?
         detector = StandardSingpass::Myinfo.configuration.production_env_detector
         return !!detector.call if detector
+
+        app_env = ENV["APP_ENVIRONMENT"].to_s.strip
+        return !NON_PRODUCTION_APP_ENVIRONMENTS.include?(app_env) unless app_env.empty?
 
         rails_production?
       end
@@ -75,7 +83,8 @@ module StandardSingpass
           "identity data that is indistinguishable from verified Myinfo " \
           "data downstream. The application refuses to boot. Unset the " \
           "mock-mode environment variable on this deploy and redeploy. If " \
-          "this deploy is not actually production, set " \
+          "this deploy is not actually production, set APP_ENVIRONMENT " \
+          "(staging, preview, development or test) or " \
           "config.production_env_detector so the gem can tell."
       end
       private_class_method :production_message

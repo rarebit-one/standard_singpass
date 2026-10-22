@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The mock-mode guard follows `APP_ENVIRONMENT`, failing closed.** Without a
+  `production_env_detector`, "production deploy" is now `APP_ENVIRONMENT` when it
+  is set (only `staging`, `preview`, `development` and `test` are non-production;
+  any other value is production), else `Rails.env.production?` as before. A
+  staging box with `RAILS_ENV=production` and `APP_ENVIRONMENT=staging` boots
+  with mock mode on (reported as production-like) without detector wiring. The
+  same convention as standard_id, standard_audit and standard_health. A
+  configured detector still wins, so existing hosts are unaffected.
 - **Requires Rails 8.1** (`rails >= 8.1, < 9`, was `>= 8.0`). Every consumer
   app runs 8.1; 8.0 was never exercised in CI.
 
