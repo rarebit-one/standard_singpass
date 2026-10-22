@@ -16,6 +16,16 @@ RSpec.describe StandardSingpass::Myinfo::MockModeGuard do
     allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new(name))
   end
 
+  # Every example starts with APP_ENVIRONMENT unset (whatever the developer's
+  # shell exports) and restores it afterwards.
+  around do |example|
+    original = ENV.fetch("APP_ENVIRONMENT", nil)
+    ENV.delete("APP_ENVIRONMENT")
+    example.run
+  ensure
+    original.nil? ? ENV.delete("APP_ENVIRONMENT") : ENV["APP_ENVIRONMENT"] = original
+  end
+
   describe ".check!" do
     context "when mock mode is off" do
       it "does nothing, even on production" do
@@ -111,13 +121,59 @@ RSpec.describe StandardSingpass::Myinfo::MockModeGuard do
       expect(described_class.production_deploy?).to be(true)
     end
 
-    it "falls back to Rails.env.production? without a detector" do
+    it "falls back to Rails.env.production? without a detector or APP_ENVIRONMENT" do
       configure(mock_mode: false)
 
       expect(described_class.production_deploy?).to be(false)
 
       as_rails_env("production")
       expect(described_class.production_deploy?).to be(true)
+    end
+
+    context "with APP_ENVIRONMENT set and no detector" do
+      before do
+        configure(mock_mode: false)
+        as_rails_env("production")
+      end
+
+      %w[staging preview development test].each do |name|
+        it "is not production for #{name}, even on RAILS_ENV=production" do
+          ENV["APP_ENVIRONMENT"] = name
+
+          expect(described_class.production_deploy?).to be(false)
+        end
+      end
+
+      it "is production for APP_ENVIRONMENT=production" do
+        ENV["APP_ENVIRONMENT"] = "production"
+
+        expect(described_class.production_deploy?).to be(true)
+      end
+
+      it "fails closed on an unrecognised value" do
+        ENV["APP_ENVIRONMENT"] = "prod"
+
+        expect(described_class.production_deploy?).to be(true)
+      end
+
+      it "still yields to a configured detector" do
+        ENV["APP_ENVIRONMENT"] = "production"
+        configure(mock_mode: false, detector: -> { false })
+
+        expect(described_class.production_deploy?).to be(false)
+      end
+    end
+  end
+
+  describe ".check! on a staging box with APP_ENVIRONMENT=staging and no detector" do
+    it "boots with mock mode on and reports it as production-like" do
+      configure(mock_mode: true)
+      as_rails_env("production")
+      ENV["APP_ENVIRONMENT"] = "staging"
+      allow(Rails.error).to receive(:report)
+
+      expect { described_class.check! }.not_to raise_error
+      expect(Rails.error).to have_received(:report)
     end
   end
 
