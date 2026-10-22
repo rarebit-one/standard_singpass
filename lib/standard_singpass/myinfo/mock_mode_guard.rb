@@ -41,6 +41,9 @@ module StandardSingpass
     module MockModeGuard
       extend T::Sig
 
+      # APP_ENVIRONMENT values that are not production; anything else is.
+      NON_PRODUCTION_APP_ENVIRONMENTS = T.let(%w[staging preview development test].freeze, T::Array[String])
+
       sig { void }
       def self.check!
         return unless StandardSingpass::Myinfo.configuration.mock_mode
@@ -51,9 +54,6 @@ module StandardSingpass
           report_production_like
         end
       end
-
-      # APP_ENVIRONMENT values that are not production; anything else is.
-      NON_PRODUCTION_APP_ENVIRONMENTS = T.let(%w[staging preview development test].freeze, T::Array[String])
 
       # Whether this deploy is real production for the purpose of the guard.
       # Defers to config.production_env_detector when set, else to
