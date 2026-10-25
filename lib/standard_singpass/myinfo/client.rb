@@ -101,10 +101,19 @@ module StandardSingpass
         "#{@authorize_url}?#{URI.encode_www_form(params)}"
       end
 
-      sig { params(auth_code: String, code_verifier: String, dpop_key_pair: OpenSSL::PKey::EC, nonce: T.nilable(String)).returns(T::Hash[Symbol, T.untyped]) }
-      def get_person_data(auth_code:, code_verifier:, dpop_key_pair:, nonce: nil)
+      sig { params(auth_code: String, code_verifier: String, dpop_key_pair: OpenSSL::PKey::EC, nonce: T.nilable(String), skip_nonce_validation: T::Boolean).returns(T::Hash[Symbol, T.untyped]) }
+      def get_person_data(auth_code:, code_verifier:, dpop_key_pair:, nonce: nil, skip_nonce_validation: false)
+        unless skip_nonce_validation
+          if nonce.blank?
+            raise ConfigurationError,
+              "nonce is required for id_token replay protection. " \
+              "Pass the nonce you sent in the PAR request. " \
+              "Only pass skip_nonce_validation: true for flows where no nonce was sent in the PAR request."
+          end
+        end
+
         token_data = exchange_token(auth_code:, code_verifier:, dpop_key_pair:)
-        id_token_payload = validate_id_token(token_data[:id_token], nonce:)
+        id_token_payload = validate_id_token(token_data[:id_token], nonce: skip_nonce_validation ? nil : nonce)
 
         person_data = fetch_userinfo(access_token: token_data[:access_token], dpop_key_pair:)
 

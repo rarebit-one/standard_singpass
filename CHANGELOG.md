@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-25
+
+### Changed
+
+- **`get_person_data` now requires a `nonce` by default.** Passing `nonce: nil` (or omitting it) raises
+  `StandardSingpass::Myinfo::ConfigurationError` with a clear message. The nonce binds the id_token to
+  the session and prevents replay attacks; PKCE + DPoP substantially raise the bar but do not fully close
+  the replay window without it. The only consumer, `fundbright-web`, already passes the nonce from the
+  session on every call, so it is unaffected. To opt out for flows where no nonce was included in the PAR
+  request, pass `skip_nonce_validation: true` — this is intentionally verbose so it stands out in review.
+
 ## [0.6.0] - 2026-10-22
 
 ### Changed
