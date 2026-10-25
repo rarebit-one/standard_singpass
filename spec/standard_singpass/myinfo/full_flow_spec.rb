@@ -184,6 +184,79 @@ RSpec.describe "StandardSingpass::Myinfo full flow", type: :integration do
     )
   end
 
+  it "raises ConfigurationError before any token exchange when the nonce is omitted (0.7.0 contract)" do
+    # The required-nonce check runs before the token request is built, so a
+    # caller that forgot the nonce fails fast with a configuration error and
+    # never hands the auth code to Singpass.
+    stub_request(:post, token_url)
+
+    expect {
+      client.get_person_data(
+        auth_code:     "code",
+        code_verifier: pkce[:code_verifier],
+        dpop_key_pair: dpop_key_pair
+      )
+    }.to raise_error(StandardSingpass::Myinfo::ConfigurationError, /nonce is required/)
+
+    expect(WebMock).not_to have_requested(:post, token_url)
+  end
+
+  it "walks the full flow with skip_nonce_validation: true and a nonce-free id_token" do
+    # Explicit opt-out for flows that sent no nonce in the PAR request: the
+    # id_token carries no nonce claim and the client must accept it end to
+    # end (token exchange → userinfo → decrypt → validate) without raising.
+    id_token_payload = {
+      "iss" => issuer,
+      "aud" => client_id,
+      "sub" => "singpass-sub-123",
+      "iat" => Time.now.to_i,
+      "exp" => (Time.now + 5.minutes).to_i,
+      "acr" => "urn:singpass:authentication:loa:3"
+    }
+    id_token_jws = JWT.encode(id_token_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
+    id_token_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
+      id_token_jws,
+      public_key: client_encryption_key,
+      alg:        "ECDH-ES+A256KW",
+      enc:        "A256GCM",
+      kid:        client_encryption_kid
+    )
+
+    stub_request(:post, token_url).to_return(
+      status:  200,
+      body:    { access_token: "DPoP-bound-access-token", id_token: id_token_jwe }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+
+    userinfo_payload = { "sub" => "singpass-sub-123", "person_info" => person_data }
+    userinfo_jws = JWT.encode(userinfo_payload, singpass_signing_key, "ES256", { kid: singpass_signing_kid })
+    userinfo_jwe = StandardSingpass::Testing::EcdhJwe.encrypt(
+      userinfo_jws,
+      public_key: client_encryption_key,
+      alg:        "ECDH-ES+A256KW",
+      enc:        "A256GCM",
+      kid:        client_encryption_kid
+    )
+
+    stub_request(:get, userinfo_url).to_return(
+      status:  200,
+      body:    userinfo_jwe,
+      headers: { "Content-Type" => "application/jose" }
+    )
+
+    result = client.get_person_data(
+      auth_code:             "authorization-code-abc",
+      code_verifier:         pkce[:code_verifier],
+      dpop_key_pair:         dpop_key_pair,
+      skip_nonce_validation: true
+    )
+
+    expect(result[:id_token_acr]).to eq("urn:singpass:authentication:loa:3")
+    expect(result[:person_data]).to include("person_info")
+    expect(WebMock).to have_requested(:post, token_url).once
+    expect(WebMock).to have_requested(:get, userinfo_url).once
+  end
+
   it "raises AuthenticationError when the id_token nonce does not match the session nonce" do
     id_token_payload = {
       "iss"   => issuer,
