@@ -295,7 +295,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
 
     it "returns the decrypted and validated person data" do
-      result = client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+      result = client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
       expect(result[:person_data]).to eq(person_data)
     end
 
@@ -309,18 +309,18 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           end
         end
 
-        result = client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+        result = client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         expect(result[:id_token_acr]).to eq("https://www.singpass.gov.sg/2fa/strong")
       end
 
       it "returns nil when acr is absent (claim is optional per OIDC core)" do
-        result = client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+        result = client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         expect(result[:id_token_acr]).to be_nil
       end
     end
 
     it "uses the provided DPoP key pair for both token and userinfo requests" do
-      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:build_dpop_proof).with(
         hash_including(key_pair: dpop_key_pair)
@@ -328,7 +328,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
 
     it "sends a DPoP proof with the userinfo URL as htu (RFC 9449 §4.2)" do
-      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:build_dpop_proof).with(
         http_method: "GET",
@@ -339,7 +339,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
 
     it "builds client assertion with code for token exchange" do
-      client.get_person_data(auth_code: "auth-code-123", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code-123", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:build_client_assertion).with(
         client_id: "test-client-id",
@@ -351,7 +351,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
 
     it "sends required form parameters in the token exchange" do
-      client.get_person_data(auth_code: "auth-code-123", code_verifier: "verifier-123", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code-123", code_verifier: "verifier-123", dpop_key_pair:, nonce:)
 
       expect(WebMock).to have_requested(:post, token_url).with { |req|
         body = URI.decode_www_form(req.body).to_h
@@ -365,14 +365,14 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
 
     it "sends DPoP authorization header for the userinfo request" do
-      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(WebMock).to have_requested(:get, userinfo_url)
         .with(headers: { "Authorization" => "DPoP #{access_token}" })
     end
 
     it "decrypts the userinfo JWE and validates the JWS" do
-      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:decrypt_jwe)
         .with("encrypted-userinfo-jwe", private_keys: [{ kid: "test-enc-kid", key: "test-encryption-key" }])
@@ -381,7 +381,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
 
     it "decrypts the id_token JWE and validates the JWS" do
-      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:decrypt_jwe)
         .with(id_token, private_keys: [{ kid: "test-enc-kid", key: "test-encryption-key" }])
@@ -394,7 +394,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:post, token_url).to_return(status: 401, body: "unauthorized")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /rejected/)
       end
 
@@ -402,7 +402,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:post, token_url).to_return(status: 500, body: "server error")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError, /Token exchange failed/)
       end
 
@@ -410,7 +410,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:post, token_url).to_return(status: 429, body: "rate limited")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::RateLimitError)
       end
 
@@ -418,7 +418,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:post, token_url).to_timeout
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError, /unreachable/)
       end
 
@@ -427,7 +427,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           .to_return(status: 401, body: '{"error":"invalid_grant","nric":"S1234567A","email":"x@y.z"}')
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError) { |e|
           expect(e.message).not_to include("S1234567A")
           expect(e.message).not_to include("x@y.z")
@@ -451,7 +451,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           .to_return(status: 502, body: '{"error":"upstream_dependency_error"}')
           .then.to_return(status: 200, body: "encrypted-userinfo-jwe")
 
-        result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
         expect(result[:person_data]).to eq(person_data)
         expect(WebMock).to have_requested(:get, userinfo_url).twice
@@ -462,7 +462,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           .to_return(status: 502, body: '{"error":"upstream_dependency_error"}')
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
           expect(e.status).to eq(502)
         }
@@ -478,7 +478,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           .exactly(described_class::USERINFO_MAX_ATTEMPTS - 1).times
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError)
       end
 
@@ -490,7 +490,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           .to_return(status: 502, body: "bad gateway")
           .then.to_return(status: 200, body: "encrypted-userinfo-jwe")
 
-        client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
         expect(StandardSingpass::Myinfo::Security).to have_received(:build_dpop_proof).with(
           http_method: "GET",
@@ -504,7 +504,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 400, body: "bad request")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError)
 
         expect(WebMock).to have_requested(:get, userinfo_url).once
@@ -514,7 +514,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_timeout
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError, /unreachable/)
 
         expect(WebMock).to have_requested(:get, userinfo_url).once
@@ -525,7 +525,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           .to_return(status: 502, body: "bad gateway")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError)
 
         expect(WebMock).to have_requested(:post, token_url).once
@@ -537,7 +537,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 403, body: "forbidden")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /forbidden/)
       end
 
@@ -545,7 +545,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 500, body: "server error")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError, /Person data fetch failed/)
       end
 
@@ -553,7 +553,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 500, body: "server error")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
           expect(e.status).to eq(500)
         }
@@ -564,7 +564,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 400, body:)
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
           expect(e.message).to include("invalid_dpop_proof")
           expect(e.message).to include("htu mismatch")
@@ -576,7 +576,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 429, body: "rate limited")
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::RateLimitError)
       end
 
@@ -584,7 +584,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_timeout
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError, /unreachable/)
       end
 
@@ -595,7 +595,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::DecryptionError)
       end
 
@@ -609,7 +609,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::SignatureError)
       end
 
@@ -625,7 +625,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::SignatureError) { |error|
           expect(error.status).to eq(503)
           expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
@@ -639,7 +639,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           ))
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError) { |error|
           expect(error.transport?).to be(true)
           expect(StandardSingpass::Myinfo::FailureClassifier.upstream_unavailable?(error)).to be(true)
@@ -650,7 +650,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         stub_request(:get, userinfo_url).to_return(status: 500, body: '{"nric":"S1234567A"}')
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
           expect(e.message).not_to include("S1234567A")
         }
@@ -664,7 +664,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
                      headers: { "Content-Type" => "application/json" })
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /must be a 5-segment JWE/)
       end
 
@@ -675,7 +675,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /ID token decryption failed/)
       end
 
@@ -689,7 +689,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         expect {
-          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
         }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /ID token signature verification failed/)
       end
 
@@ -702,7 +702,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /sub claim is missing/)
         end
       end
@@ -725,14 +725,14 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           it "passes when payload has a valid acr" do
             stub_id_token_acr("urn:singpass:authentication:loa:2")
 
-            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             expect(result[:person_data]).to eq(person_data)
           end
 
           it "passes when payload has no acr claim" do
             stub_id_token_acr(:missing)
 
-            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             expect(result[:person_data]).to eq(person_data)
           end
         end
@@ -743,7 +743,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           it "passes regardless of payload acr" do
             stub_id_token_acr(:missing)
 
-            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             expect(result[:person_data]).to eq(person_data)
           end
         end
@@ -757,7 +757,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
             stub_id_token_acr("urn:singpass:authentication:loa:2")
 
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::ConfigurationError, /minimum_acr.*not a recognised Singpass LOA URN/)
           end
         end
@@ -768,14 +768,14 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           it "passes when acr exactly matches the floor" do
             stub_id_token_acr("urn:singpass:authentication:loa:2")
 
-            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             expect(result[:person_data]).to eq(person_data)
           end
 
           it "passes when acr is above the floor" do
             stub_id_token_acr("urn:singpass:authentication:loa:3")
 
-            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             expect(result[:person_data]).to eq(person_data)
           end
 
@@ -783,7 +783,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
             stub_id_token_acr("urn:singpass:authentication:loa:1")
 
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /is below required minimum/)
           end
 
@@ -791,7 +791,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
             stub_id_token_acr(:missing)
 
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /is below required minimum/)
           end
 
@@ -799,7 +799,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
             stub_id_token_acr("garbage")
 
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /is below required minimum/)
           end
         end
@@ -811,7 +811,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
             stub_id_token_acr("urn:singpass:authentication:loa:2")
 
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /is below required minimum/)
           end
         end
@@ -826,7 +826,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /iss claim is missing/)
         end
       end
@@ -840,7 +840,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /issuer does not match/)
         end
       end
@@ -854,7 +854,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /aud claim is missing/)
         end
       end
@@ -868,7 +868,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /audience does not match/)
         end
       end
@@ -881,7 +881,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         it "accepts the array aud per OIDC spec" do
-          result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           expect(result[:person_data]).to eq(person_data)
         end
       end
@@ -895,7 +895,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /exp claim is missing/)
         end
       end
@@ -909,7 +909,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /ID token has expired/)
         end
       end
@@ -922,7 +922,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         end
 
         it "accepts ID token within clock skew leeway" do
-          result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+          result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           expect(result[:person_data]).to eq(person_data)
         end
       end
@@ -937,7 +937,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
           it "raises AuthenticationError" do
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /iat is too old/)
           end
         end
@@ -950,7 +950,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
           end
 
           it "accepts the token" do
-            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             expect(result[:person_data]).to eq(person_data)
           end
         end
@@ -964,7 +964,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
           it "raises AuthenticationError" do
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /iat claim is missing/)
           end
         end
@@ -978,7 +978,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
           it "raises AuthenticationError" do
             expect {
-              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+              client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
             }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /iat is in the future/)
           end
         end
@@ -993,7 +993,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
         it "raises AuthenticationError" do
           expect {
-            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+            client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
           }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /ID token missing/)
         end
       end
@@ -1022,15 +1022,33 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       end
     end
 
-    context "when nonce is not provided" do
-      it "skips nonce validation" do
-        result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
-        expect(result[:person_data]).to eq(person_data)
+    context "when nonce is omitted" do
+      it "raises ConfigurationError" do
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+        }.to raise_error(StandardSingpass::Myinfo::ConfigurationError, /nonce is required/)
       end
 
-      it "skips nonce validation for empty string nonce" do
-        result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce: "")
-        expect(result[:person_data]).to eq(person_data)
+      it "raises ConfigurationError for an empty string nonce" do
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce: "")
+        }.to raise_error(StandardSingpass::Myinfo::ConfigurationError, /nonce is required/)
+      end
+
+      context "with skip_nonce_validation: true" do
+        it "skips nonce validation and succeeds" do
+          result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, skip_nonce_validation: true)
+          expect(result[:person_data]).to eq(person_data)
+        end
+
+        it "succeeds even when id_token has no nonce claim" do
+          allow(StandardSingpass::Myinfo::Security).to receive(:validate_jws) do |jws, **_kwargs|
+            jws == decrypted_id_token_jws ? id_token_claims.except("nonce") : person_data
+          end
+
+          result = client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, skip_nonce_validation: true)
+          expect(result[:person_data]).to eq(person_data)
+        end
       end
     end
   end
@@ -1141,7 +1159,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     it "emits token and userinfo events for a full exchange" do
       stub_request(:get, userinfo_url).to_return(status: 200, body: "encrypted-userinfo-jwe")
 
-      client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(event(:token).payload).to include(status: 200, error: nil)
       expect(event(:userinfo).payload).to include(status: 200, error: nil, attempts: 1)
@@ -1153,7 +1171,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
         .to_return(status: 502, body: "bad gateway")
         .then.to_return(status: 200, body: "encrypted-userinfo-jwe")
 
-      client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       retries = events.select { |e| e.name == "standard_singpass.retry" }
       expect(retries.size).to eq(1)
@@ -1164,7 +1182,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     it "carries no tokens, codes, or person data in any payload" do
       stub_request(:get, userinfo_url).to_return(status: 200, body: "encrypted-userinfo-jwe")
 
-      client.get_person_data(auth_code: "secret-auth-code", code_verifier: "verifier", dpop_key_pair:)
+      client.get_person_data(auth_code: "secret-auth-code", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       dumped = events.map { |e| e.payload.inspect }.join
       expect(dumped).not_to include("secret-auth-code", access_token, "S1234567A", "John Doe")
