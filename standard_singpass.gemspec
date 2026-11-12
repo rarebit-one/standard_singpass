@@ -3,7 +3,7 @@ require_relative "lib/standard_singpass/version"
 Gem::Specification.new do |spec|
   spec.name        = "standard_singpass"
   spec.version     = StandardSingpass::VERSION
-  spec.authors     = ["Jaryl Sim"]
+  spec.authors     = ["Rarebit One"]
   spec.email       = ["code@jaryl.dev"]
   spec.homepage    = "https://github.com/rarebit-one/standard_singpass"
   spec.summary     = "Singpass MyInfo (and future Singpass Sign-In) client for Rails apps."
