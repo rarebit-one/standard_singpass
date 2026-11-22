@@ -78,9 +78,8 @@ module StandardSingpass
       end
 
       def log_and_report(error, message, reason:, kid:)
-        return unless defined?(::Rails)
-        ::Rails.logger&.error("StandardSingpass::Myinfo: #{message}") if ::Rails.respond_to?(:logger)
-        ::Rails.error.report(error, handled: true, context: { component: "StandardSingpass::Myinfo", reason:, kid: }) if ::Rails.respond_to?(:error)
+        ::Rails.logger&.error("StandardSingpass::Myinfo: #{message}") if defined?(::Rails) && ::Rails.respond_to?(:logger)
+        configuration.report_error(error, { component: "StandardSingpass::Myinfo", reason:, kid: })
       end
     end
   end
