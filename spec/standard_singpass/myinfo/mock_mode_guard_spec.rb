@@ -69,6 +69,26 @@ RSpec.describe StandardSingpass::Myinfo::MockModeGuard do
         end
       end
 
+      it "reports a production-like deploy through config.error_reporter when set" do
+        reports = []
+        configure(mock_mode: true, detector: -> { false })
+        StandardSingpass::Myinfo.configuration.error_reporter = ->(error, context) { reports << [error, context] }
+        as_rails_env("production")
+        allow(Rails.logger).to receive(:error)
+        allow(Rails.error).to receive(:report)
+
+        expect { described_class.check! }.not_to raise_error
+
+        expect(reports.size).to eq(1)
+        error, context = reports.first
+        expect(error).to be_a(StandardSingpass::Myinfo::ConfigurationError)
+        expect(context).to eq(
+          component: "StandardSingpass::Myinfo::MockModeGuard",
+          reason: "mock_mode_on_production_like_deploy"
+        )
+        expect(Rails.error).not_to have_received(:report)
+      end
+
       it "stays silent in development and test" do
         configure(mock_mode: true)
         allow(Rails.logger).to receive(:error)

@@ -63,12 +63,82 @@ StandardSingpass::Myinfo.configure do |c|
   # the mock-mode guard. Defaults to APP_ENVIRONMENT (failing closed), then
   # Rails.env.production? — see "Mock mode" below.
   # c.production_env_detector = -> { ... }
+
+  # Optional: where the gem sends the errors it handles without raising (see
+  # "Error reporting" below). Defaults to Rails.error.report.
+  # c.error_reporter = ->(error, context) { Sentry.capture_exception(error, extra: context) }
 end
 ```
 
 `StandardSingpass.configure` / `StandardSingpass.config` are equivalent top-level aliases, matching the other `standard_*` gems.
 
 `private_jwks_json` is parsed lazily — on first use, or at the end of boot (the engine resolves it from `after_initialize`, next to the mock-mode guard) — so assignments inside the block can come in any order.
+
+## Error reporting
+
+Some failures are handled rather than raised, so the host still boots and the
+operator still hears about them:
+
+| Source | `context[:component]` | `context[:reason]` (and other keys) |
+|---|---|---|
+| Malformed `private_jwks_json` | `StandardSingpass::Myinfo::Configuration` | `parse_private_jwks` |
+| A JWK that cannot be converted to a private key | `StandardSingpass::Myinfo::Configuration` | `jwk_to_private_pem` (`role`, `kid`) |
+| A configured key `public_jwks` cannot load | `StandardSingpass::Myinfo` | `build_public_jwks_signing` / `build_public_jwks_encryption` (`kid`) |
+| Mock mode on a production-like deploy | `StandardSingpass::Myinfo::MockModeGuard` | `mock_mode_on_production_like_deploy` |
+
+Each goes to `config.error_reporter`, a callable taking `(error, context)`. When
+it is nil (the default) the gem calls `Rails.error.report(error, handled: true,
+context: context)`, which reaches Sentry only when a `Rails.error` subscriber is
+registered (sentry-rails registers one). A host that never forwards
+`Rails.error` can point it straight at its tracker:
+
+```ruby
+c.error_reporter = ->(error, context) { Sentry.capture_exception(error, extra: context) }
+```
+
+It replaces the `Rails.error` call; call `Rails.error.report` from it too if you
+want both. A reporter that raises is logged and ignored, so it can never turn a
+handled error into a raised one or fail boot. Errors the gem raises
+(`StandardSingpass::Myinfo::Error` and its subclasses) are not reported; the
+caller owns them.
+
+## Environment variables and StandardHealth
+
+The gem reads no environment variable of its own apart from the estate-wide
+`APP_ENVIRONMENT` (see [Mock mode](#mock-mode)). Credentials and toggles reach it
+through `StandardSingpass::Myinfo.configure`, and the install generator maps the
+conventional `MYINFO_*` names there. So the gem contributes nothing to
+standard_health's env audit: the app owns those names and should declare them.
+With [standard_health](https://github.com/rarebit-one/standard_health), add
+them to the app's `env_spec`, adjusting the `in:` lists to your deploy
+environments:
+
+```ruby
+# config/initializers/standard_health.rb, inside StandardHealth.configure
+c.env_spec = StandardHealth::EnvSpec.define do
+  # ...your other declarations...
+  group "Singpass / MyInfo" do
+    required :MYINFO_CLIENT_ID, in: %w[staging production],
+      description: "Singpass developer-portal client id",
+      consumed_by: "config/initializers/standard_singpass.rb"
+    required :MYINFO_REDIRECT_URL, in: %w[staging production],
+      description: "Callback URL registered with Singpass",
+      consumed_by: "config/initializers/standard_singpass.rb"
+    required :MYINFO_PRIVATE_JWKS, in: %w[production],
+      description: "Private JWKS with the ES256 signing and ECDH-ES+A256KW encryption keys",
+      consumed_by: "config/initializers/standard_singpass.rb"
+    # Mock mode on production already fails boot (MockModeGuard); this row
+    # makes a mis-set variable visible in the audit as well.
+    forbidden :MYINFO_MOCK_MODE, in: %w[production],
+      description: "Serves fixture personas instead of the real Singpass flow",
+      consumed_by: "config/initializers/standard_singpass.rb"
+  end
+end
+```
+
+`MYINFO_SCOPE`, `MYINFO_USERINFO_URL` and `MYINFO_USERINFO_JWKS_URL` are
+optional overrides in the generated initializer; declare them only if your app
+relies on them.
 
 ## Assurance level (`minimum_acr`)
 
@@ -112,7 +182,7 @@ opt-out — a guard you can forget to wire is a guard that isn't there.
 | Deploy | Mock mode on | Behaviour |
 |---|---|---|
 | Production | yes | **Raises `ConfigurationError` — the app refuses to boot.** |
-| `RAILS_ENV=production` but not production | yes | Logs an error and reports via `Rails.error`; boots. |
+| `RAILS_ENV=production` but not production | yes | Logs an error and reports via `config.error_reporter` (default `Rails.error`); boots. |
 | Anything else | yes | Silent. |
 | Any | no | Silent. |
 
@@ -127,8 +197,9 @@ with no extra wiring.
 
 `config.production_env_detector` (a callable taking no arguments, returning a
 boolean) overrides that, for a host with a different discriminator. The
-production-like tier reports through `Rails.error` rather than a specific error
-tracker, so whatever the host has subscribed (Sentry included) picks it up.
+production-like tier reports through [`config.error_reporter`](#error-reporting),
+which defaults to `Rails.error` rather than a specific error tracker, so
+whatever the host has subscribed (Sentry included) picks it up.
 
 ## Initiating the flow
 

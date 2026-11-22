@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`config.error_reporter`** on `StandardSingpass::Myinfo::Configuration`: an
+  optional callable `(error, context)` receiving the errors the gem handles
+  without raising (a malformed private JWKS, an unconvertible JWK, a key
+  `public_jwks` cannot load, mock mode on a production-like deploy). nil (the
+  default) keeps the current `Rails.error.report(error, handled: true,
+  context:)`, so nothing changes unless a host sets it. All four sites now go
+  through one helper, `Configuration#report_error`, with their context keys
+  unchanged. A reporter that raises is logged and ignored.
+
+### Changed
+- `public_jwks` key-load failures are now reported (through `error_reporter`)
+  even when Rails is not loaded, if a reporter is set; logging still needs
+  Rails.
+
+### Documentation
+- README: an "Error reporting" section, and a recommended app-side
+  standard_health `env_spec` snippet for the `MYINFO_*` variables. The gem
+  reads none of them itself (only `APP_ENVIRONMENT`), so it contributes no env
+  declarations to standard_health.
+
 ## [0.7.0] - 2026-10-25
 
 ### Changed

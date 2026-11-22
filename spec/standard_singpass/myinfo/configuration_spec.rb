@@ -171,6 +171,74 @@ RSpec.describe StandardSingpass::Myinfo::Configuration do
     end
   end
 
+  describe "error_reporter" do
+    let(:reports) { [] }
+    let(:reporter) { ->(error, context) { reports << [error, context] } }
+
+    it "defaults to nil, meaning Rails.error.report" do
+      expect(described_class.new.error_reporter).to be_nil
+    end
+
+    it "receives a handled error with the site's context instead of Rails.error" do
+      allow(Rails.error).to receive(:report)
+      allow(Rails.logger).to receive(:error)
+
+      c = described_class.new
+      c.mock_mode = true
+      c.error_reporter = reporter
+      c.private_jwks_json = "not-json"
+      c.resolve_private_jwks!
+
+      expect(reports.size).to eq(1)
+      error, context = reports.first
+      expect(error).to be_a(JSON::ParserError)
+      expect(context).to eq(component: "StandardSingpass::Myinfo::Configuration", reason: "parse_private_jwks")
+      expect(Rails.error).not_to have_received(:report)
+    end
+
+    it "keeps the extra context keys of a JWK conversion failure" do
+      allow(JWT::JWK).to receive(:new).and_call_original
+      allow(JWT::JWK).to receive(:new).with(hash_including("kid" => "enc-1")).and_raise(JWT::JWKError, "bad key")
+      allow(Rails.logger).to receive(:error)
+
+      c = described_class.new
+      c.error_reporter = reporter
+      c.private_jwks_json = private_jwks
+      c.resolve_private_jwks!
+
+      expect(reports.map(&:last)).to include(
+        component: "StandardSingpass::Myinfo::Configuration", reason: "jwk_to_private_pem", role: "encryption", kid: "enc-1"
+      )
+    end
+
+    it "logs and swallows a reporter that raises" do
+      allow(Rails.logger).to receive(:error)
+
+      c = described_class.new
+      c.mock_mode = true
+      c.error_reporter = ->(_error, _context) { raise "tracker down" }
+      c.private_jwks_json = "not-json"
+
+      expect { c.resolve_private_jwks! }.not_to raise_error
+      expect(Rails.logger).to have_received(:error).with(/error reporting failed: RuntimeError: tracker down/)
+    end
+
+    it "is used by public_jwks when a configured key cannot be loaded" do
+      StandardSingpass::Myinfo.configure do |c|
+        c.signing_key = "not a pem"
+        c.signing_kid = "sig-broken"
+        c.error_reporter = reporter
+      end
+      allow(Rails.logger).to receive(:error)
+
+      StandardSingpass::Myinfo.public_jwks
+
+      error, context = reports.first
+      expect(error).to be_a(OpenSSL::PKey::PKeyError)
+      expect(context).to eq(component: "StandardSingpass::Myinfo", reason: "build_public_jwks_signing", kid: "sig-broken")
+    end
+  end
+
   describe "StandardSingpass::Myinfo.public_jwks" do
     it "derives the public JWKS from the configured private keys" do
       StandardSingpass::Myinfo.configure { |c| c.private_jwks_json = private_jwks }

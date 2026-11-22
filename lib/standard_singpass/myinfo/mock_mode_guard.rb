@@ -93,8 +93,9 @@ module StandardSingpass
       # per the detector) — staging, preview, a review app. Mock mode can be
       # intentional here, so this boots; it is reported rather than raised.
       #
-      # Reported through `Rails.error` rather than a specific error tracker so
-      # whatever the host has subscribed (Sentry included) picks it up.
+      # Reported through `config.error_reporter`, which defaults to
+      # `Rails.error` rather than a specific error tracker so whatever the host
+      # has subscribed (Sentry included) picks it up.
       sig { void }
       def self.report_production_like
         message = "StandardSingpass::Myinfo mock_mode is enabled on a " \
@@ -104,12 +105,9 @@ module StandardSingpass
 
         ::Rails.logger&.error("StandardSingpass::Myinfo: #{message}")
 
-        return unless defined?(::Rails.error)
-
-        ::Rails.error.report(
+        StandardSingpass::Myinfo.configuration.report_error(
           ConfigurationError.new(message),
-          handled: true,
-          context: {
+          {
             component: "StandardSingpass::Myinfo::MockModeGuard",
             reason: "mock_mode_on_production_like_deploy"
           }

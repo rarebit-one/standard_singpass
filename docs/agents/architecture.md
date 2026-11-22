@@ -42,11 +42,20 @@ standard_singpass/
 `StandardSingpass::Myinfo::Configuration` instance held in `@configuration`.
 Hosts pass `client_id`, `redirect_url`, `private_jwks_json`, optional
 `minimum_acr`, optional `network_wrapper` (e.g. a circuit-breaker lambda),
-and `environment` (`:production` / `:staging`). The configuration object
+optional `error_reporter`, and `environment` (`:production` / `:staging`). The configuration object
 does the env-vs-staging endpoint selection — hosts never hardcode URLs.
 
 Tests can call `StandardSingpass::Myinfo.reset_configuration!` to drop the
 memoized config between examples.
+
+### Error reporting
+
+Every error the gem handles without raising goes through
+`Configuration#report_error(error, context)`: `config.error_reporter` when set,
+else `Rails.error.report(error, handled: true, context:)`. Don't call
+`Rails.error` directly from a new site; keep the `component:` / `reason:`
+context keys. A raising reporter is logged and ignored, because one site runs
+at boot (MockModeGuard).
 
 ### Pluggable network wrapper
 

@@ -29,6 +29,9 @@
 #   c.production_env_detector - Callable returning whether this deploy is real
 #                              production; defaults to Rails.env.production?
 #   c.personas_path          - Pathname to JSON file of test personas
+#   c.error_reporter         - Callable `(error, context)` receiving the errors
+#                              the gem handles without raising; defaults to
+#                              Rails.error.report
 #   c.authorize_url, c.par_url, c.token_url, c.userinfo_url,
 #   c.jwks_url, c.userinfo_jwks_url, c.issuer
 #                            - Override individual endpoints (rarely needed)
@@ -92,6 +95,24 @@ module StandardSingpass
       # while still refusing to boot on real production.
       attr_accessor :production_env_detector
 
+      # Where the gem sends the errors it handles without raising: a malformed
+      # private JWKS, an unloadable JWK, a key `public_jwks` cannot load, and
+      # mock mode on a production-like deploy (MockModeGuard). A callable
+      # taking `(error, context)`, where context is a Hash such as
+      # `{ component: "StandardSingpass::Myinfo::Configuration", reason: "parse_private_jwks" }`.
+      #
+      # nil (the default) means `Rails.error.report(error, handled: true,
+      # context: context)`, which reaches Sentry only when a `Rails.error`
+      # subscriber is registered (sentry-rails registers one). A host that
+      # never forwards Rails.error can point this straight at its tracker:
+      #
+      #   c.error_reporter = ->(error, context) { Sentry.capture_exception(error, extra: context) }
+      #
+      # It replaces the Rails.error call; call `Rails.error.report` from it too
+      # if you want both. A reporter that raises is logged and ignored, so it
+      # can never turn a handled error into a raised one (or fail boot).
+      attr_accessor :error_reporter
+
       def initialize
         self.environment = :staging
         @scope = DEFAULT_SCOPE
@@ -103,6 +124,7 @@ module StandardSingpass
         @network_wrapper = ->(&block) { block.call }
         @mock_mode = false
         @production_env_detector = nil
+        @error_reporter = nil
       end
 
       def environment=(env)
@@ -180,6 +202,21 @@ module StandardSingpass
         self
       end
 
+      # @api private: the one place the gem reports an error it handles.
+      # Calls `error_reporter` when set, otherwise `Rails.error.report(error,
+      # handled: true, context:)` when Rails.error exists. Returns nil.
+      def report_error(error, context)
+        if error_reporter
+          error_reporter.call(error, context)
+        elsif defined?(::Rails) && ::Rails.respond_to?(:error) && ::Rails.error
+          ::Rails.error.report(error, handled: true, context:)
+        end
+        nil
+      rescue => e
+        log(:error, "error reporting failed: #{e.class}: #{e.message}")
+        nil
+      end
+
       private
 
       def parse_private_jwks(jwks_json)
@@ -247,7 +284,7 @@ module StandardSingpass
         mock_mode || (defined?(::Rails) && ::Rails.respond_to?(:env) && ::Rails.env.test?)
       end
 
-      # Rails.logger / Rails.error are optional: the gem can be loaded (and a
+      # Rails.logger is optional: the gem can be loaded (and a
       # Configuration built) outside a booted Rails app — tooling, plain Ruby
       # scripts, or before the logger is assigned.
       def log(level, message)
@@ -256,8 +293,7 @@ module StandardSingpass
       end
 
       def report(error, reason:, **context)
-        return unless defined?(::Rails) && ::Rails.respond_to?(:error)
-        ::Rails.error.report(error, handled: true, context: { component: "StandardSingpass::Myinfo::Configuration", reason:, **context })
+        report_error(error, { component: "StandardSingpass::Myinfo::Configuration", reason:, **context })
       end
 
 
