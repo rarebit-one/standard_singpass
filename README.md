@@ -224,6 +224,10 @@ redirect_to client.build_authorize_redirect(request_uri: par[:request_uri])
 ## Handling the callback
 
 ```ruby
+# Singpass sends `iss` on the redirect (success and error). Check it before
+# acting on either; pass `required: true` once you see it arrive reliably.
+client.validate_callback_issuer!(params[:iss])
+
 result = client.get_person_data(
   auth_code:     params[:code],
   code_verifier: session[:myinfo_code_verifier],
@@ -308,6 +312,10 @@ end
 ```
 
 This covers every leg — PAR, token exchange, userinfo, and the JWKS fetches that back signature verification. 502 is Singpass's documented signal that a MyInfo upstream agency (CPF Board, IRAS, MOM, …) is unavailable — returned both for genuine blips and throughout their [published maintenance windows](https://docs.developer.singpass.gov.sg/docs/products/singpass-myinfo/scheduled-downtimes); 503/504 are the generic equivalents. The list is `FailureClassifier::UPSTREAM_UNAVAILABLE_STATUSES`, and the client's automatic userinfo retry uses that same constant.
+
+**A 502 is not always their side.** Singpass also returns `upstream_dependency_error` when it could not fetch *your* JWKS endpoint, which must be publicly reachable and answer within 3 seconds. `FailureClassifier` cannot tell the two apart from the response, so it still answers "unavailable"; on the PAR and token legs, where no upstream agency is involved, treat a recurring `error.error_code == "upstream_dependency_error"` as a prompt to check your own JWKS endpoint's health.
+
+**`error_code`** carries the OAuth `error` value from the response body on PAR, token and userinfo failures (`nil` when there is none). One case worth branching on: a userinfo `invalid_request` (HTTP 400) is what Singpass returns for a Singpass Foreign Account, which has no Myinfo data. It is also returned when your JWKS is unreachable or malformed, so treat it as "offer manual entry", not as proof of either cause.
 
 **Never classify by matching the message text** — it is not a stable interface. That is exactly what `transport?` and `status` exist to replace.
 

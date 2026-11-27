@@ -35,19 +35,32 @@ module StandardSingpass
       sig { returns(T.nilable(Integer)) }
       attr_reader :status
 
+      # The OAuth `error` code from the Singpass response body
+      # (`invalid_request`, `upstream_dependency_error`, …). Nil when the
+      # response carried none, for transport failures, and for errors raised
+      # before any response exists. Lets a host branch on the code without
+      # parsing `message`: for example, a 502 `upstream_dependency_error` on
+      # the PAR or token leg can mean Singpass could not fetch *our* JWKS,
+      # and a userinfo `invalid_request` is what a Singpass Foreign Account
+      # (which has no Myinfo data) produces.
+      sig { returns(T.nilable(String)) }
+      attr_reader :error_code
+
       # Both keywords are optional so the bare `raise SomeError, "msg"` form
       # used across the client (and by hosts) keeps working unchanged.
       sig do
         params(
           message: T.nilable(String),
           status: T.nilable(Integer),
-          transport: T::Boolean
+          transport: T::Boolean,
+          error_code: T.nilable(String)
         ).void
       end
-      def initialize(message = nil, status: nil, transport: false)
+      def initialize(message = nil, status: nil, transport: false, error_code: nil)
         super(message)
         @status = status
         @transport = transport
+        @error_code = error_code
       end
 
       sig { returns(T::Boolean) }
