@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Follow-ups from Singpass's 2026 FAPI 2.0 documentation updates.
+
+### Added
+- **`Client#validate_callback_issuer!(iss, required: false)`** checks the `iss`
+  query parameter Singpass sends on the redirect back (success and error
+  alike, RFC 9207) against the configured issuer. A mismatch raises
+  `AuthenticationError`; a missing value raises only with `required: true`.
+  Hosts should call it in the callback before `get_person_data`.
+- **`Error#error_code`**: the OAuth `error` code from a Singpass error body
+  (`invalid_request`, `upstream_dependency_error`, …) on PAR, token and
+  userinfo failures, so hosts can branch without parsing `message`. Nil when
+  the body has none; values that are not plain lowercase codes are dropped.
+
+### Changed
+- **`get_person_data` validates the userinfo claims.** The userinfo `sub` must
+  be present and equal the ID token's `sub` (OIDC Core §5.3.2), and `iss` /
+  `aud` must match the configured issuer / `client_id` when present. A failure
+  raises `AuthenticationError`. Previously only the signature was verified.
+  Singpass documents all three claims on the userinfo response, so a real
+  response is unaffected; a host test double for userinfo now needs a matching
+  `sub`.
+- **The token-exchange client assertion no longer carries a `code` claim.**
+  Singpass removed it from its client-assertion spec as erroneous; the
+  authorization code is sent in the form body only. `Security.build_client_assertion`
+  still accepts `code:` for callers that pass it, but the client does not.
+  **Exercise a staging round trip before rolling this out.**
+
+### Documentation
+- README: `upstream_dependency_error` (HTTP 502) can mean Singpass could not
+  reach the host's own JWKS endpoint (it must answer within 3 seconds), not
+  only that an upstream agency is down; and a userinfo `invalid_request` is
+  what a Singpass Foreign Account produces.
+
 ## [0.8.0] - 2026-11-23
 
 ### Added

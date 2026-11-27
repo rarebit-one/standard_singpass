@@ -49,6 +49,7 @@ RSpec.describe StandardSingpass::Myinfo::Client do
 
   let(:person_data) do
     {
+      "sub" => "opaque-app-uuid",
       "uinfin" => { "value" => "S1234567A" },
       "name" => { "value" => "John Doe" },
       "sex" => { "code" => "M" }
@@ -250,6 +251,27 @@ RSpec.describe StandardSingpass::Myinfo::Client do
     end
   end
 
+  describe "#validate_callback_issuer!" do
+    it "accepts the configured issuer" do
+      expect { client.validate_callback_issuer!(config[:issuer]) }.not_to raise_error
+    end
+
+    it "rejects a different issuer" do
+      expect { client.validate_callback_issuer!("https://evil.example/fapi") }
+        .to raise_error(StandardSingpass::Myinfo::AuthenticationError, /does not match expected issuer/)
+    end
+
+    it "tolerates a missing iss by default" do
+      expect { client.validate_callback_issuer!(nil) }.not_to raise_error
+      expect { client.validate_callback_issuer!("") }.not_to raise_error
+    end
+
+    it "rejects a missing iss when required" do
+      expect { client.validate_callback_issuer!(nil, required: true) }
+        .to raise_error(StandardSingpass::Myinfo::AuthenticationError, /iss parameter is missing/)
+    end
+  end
+
   describe "#build_authorize_redirect" do
     it "builds a URL with only client_id and request_uri" do
       url = client.build_authorize_redirect(request_uri: "urn:ietf:params:oauth:request_uri:abc123")
@@ -338,16 +360,91 @@ RSpec.describe StandardSingpass::Myinfo::Client do
       )
     end
 
-    it "builds client assertion with code for token exchange" do
+    # Singpass's client-assertion spec has no `code` claim (removed from their
+    # samples as erroneous); the authorization code travels in the form body.
+    it "builds the token-exchange client assertion without a code claim" do
       client.get_person_data(auth_code: "auth-code-123", code_verifier: "verifier", dpop_key_pair:, nonce:)
 
       expect(StandardSingpass::Myinfo::Security).to have_received(:build_client_assertion).with(
         client_id: "test-client-id",
         audience: config[:issuer],
         signing_key: "test-signing-key",
-        signing_kid: "test-signing-kid",
-        code: "auth-code-123"
+        signing_kid: "test-signing-kid"
       )
+    end
+
+    context "userinfo claim validation" do
+      let(:call) { client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:) }
+
+      it "rejects a userinfo response with no sub" do
+        person_data.delete("sub")
+        expect { call }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /Userinfo sub claim is missing/)
+      end
+
+      it "rejects a userinfo response whose sub differs from the ID token's" do
+        person_data["sub"] = "someone-else"
+        expect { call }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /does not match ID token sub/)
+      end
+
+      it "rejects a userinfo iss that is not the configured issuer" do
+        person_data["iss"] = "https://evil.example/fapi"
+        expect { call }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /Userinfo issuer/)
+      end
+
+      it "rejects a userinfo aud that is not our client_id" do
+        person_data["aud"] = "another-client"
+        expect { call }.to raise_error(StandardSingpass::Myinfo::AuthenticationError, /Userinfo audience/)
+      end
+
+      it "accepts matching iss and aud" do
+        person_data.merge!("iss" => config[:issuer], "aud" => "test-client-id")
+        expect(call[:person_data]).to eq(person_data)
+      end
+    end
+
+    context "error_code" do
+      it "carries the OAuth error code from a userinfo error body" do
+        stub_request(:get, userinfo_url).to_return(
+          status: 400, body: { error: "invalid_request", error_description: "nope" }.to_json
+        )
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
+          expect(e.error_code).to eq("invalid_request")
+          expect(e.status).to eq(400)
+        }
+      end
+
+      it "carries it from a token error body" do
+        stub_request(:post, token_url).to_return(
+          status: 502, body: { error: "upstream_dependency_error" }.to_json
+        )
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e|
+          expect(e.error_code).to eq("upstream_dependency_error")
+        }
+      end
+
+      it "is nil for a non-JSON body" do
+        stub_request(:get, userinfo_url).to_return(status: 500, body: "server error")
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e| expect(e.error_code).to be_nil }
+      end
+
+      it "drops an error value that is not a plain code" do
+        stub_request(:get, userinfo_url).to_return(
+          status: 400, body: { error: "S1234567A is not allowed" }.to_json
+        )
+
+        expect {
+          client.get_person_data(auth_code: "code", code_verifier: "verifier", dpop_key_pair:, nonce:)
+        }.to raise_error(StandardSingpass::Myinfo::ApiError) { |e| expect(e.error_code).to be_nil }
+      end
     end
 
     it "sends required form parameters in the token exchange" do

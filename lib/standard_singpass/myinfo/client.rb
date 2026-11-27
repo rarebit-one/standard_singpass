@@ -116,6 +116,7 @@ module StandardSingpass
         id_token_payload = validate_id_token(token_data[:id_token], nonce: skip_nonce_validation ? nil : nonce)
 
         person_data = fetch_userinfo(access_token: token_data[:access_token], dpop_key_pair:)
+        validate_userinfo_claims(person_data, id_token_sub: id_token_payload["sub"].to_s)
 
         # `acr` is the Authentication Context Class Reference — Singpass FAPI 2.0
         # uses it to communicate which assurance level the user authenticated at
@@ -124,7 +125,63 @@ module StandardSingpass
         { person_data:, id_token_acr: id_token_payload["acr"] }
       end
 
+      # Checks the `iss` query parameter Singpass attaches to the redirect back
+      # to `redirect_url` (RFC 9207) against the configured issuer. Singpass
+      # sends it on both the success redirect (`code`, `state`, `iss`) and the
+      # error redirect, and recommends verifying it before acting on either —
+      # it is what stops a response from a different authorization server
+      # being replayed into this client (a mix-up attack).
+      #
+      # Call it in the callback before `get_person_data`:
+      #
+      #   client.validate_callback_issuer!(params[:iss])
+      #
+      # A mismatch always raises AuthenticationError. A missing value raises
+      # only with `required: true`: the default tolerates its absence so a
+      # host can adopt the check without betting every login on Singpass
+      # sending the parameter in every environment, then tighten once it has
+      # seen it arrive reliably.
+      sig { params(iss: T.nilable(String), required: T::Boolean).void }
+      def validate_callback_issuer!(iss, required: false)
+        if iss.blank?
+          raise AuthenticationError, "Callback iss parameter is missing" if required
+          return
+        end
+
+        unless ActiveSupport::SecurityUtils.secure_compare(iss.to_s, @issuer.to_s)
+          raise AuthenticationError, "Callback iss does not match expected issuer"
+        end
+      end
+
       private
+
+      # The userinfo response is a signed JWT whose `sub` Singpass documents
+      # as identical to the ID token's, alongside `iss` and `aud`. OIDC Core
+      # §5.3.2 requires the `sub` comparison: without it a validly signed
+      # userinfo response for a *different* user would be accepted as this
+      # user's data (a token-substitution attack). `iss` and `aud` are checked
+      # when present; a signed response that omits them is still bound to the
+      # user by `sub` and to Singpass by its signature.
+      sig { params(payload: T::Hash[String, T.untyped], id_token_sub: String).void }
+      def validate_userinfo_claims(payload, id_token_sub:)
+        userinfo_sub = payload["sub"]
+        raise AuthenticationError, "Userinfo sub claim is missing" unless userinfo_sub.present?
+
+        unless ActiveSupport::SecurityUtils.secure_compare(userinfo_sub.to_s, id_token_sub)
+          raise AuthenticationError, "Userinfo sub does not match ID token sub"
+        end
+
+        userinfo_iss = payload["iss"]
+        if userinfo_iss.present? && !ActiveSupport::SecurityUtils.secure_compare(userinfo_iss.to_s, @issuer.to_s)
+          raise AuthenticationError, "Userinfo issuer does not match expected issuer"
+        end
+
+        userinfo_aud = payload["aud"]
+        if userinfo_aud.present? &&
+            Array(userinfo_aud).none? { |a| ActiveSupport::SecurityUtils.secure_compare(a.to_s, @client_id.to_s) }
+          raise AuthenticationError, "Userinfo audience does not match client_id"
+        end
+      end
 
       sig { params(response: Faraday::Response).returns(T::Hash[Symbol, T.untyped]) }
       def handle_par_response(response)
@@ -133,11 +190,11 @@ module StandardSingpass
           data = JSON.parse(response.body)
           { request_uri: data.fetch("request_uri"), expires_in: data.fetch("expires_in") }
         when 401, 403
-          raise PARError.new("PAR rejected (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
+          raise PARError.new("PAR rejected (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status, error_code: error_code(response))
         when 429
           raise RateLimitError, "PAR endpoint rate limit exceeded"
         else
-          raise PARError.new("PAR failed (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
+          raise PARError.new("PAR failed (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status, error_code: error_code(response))
         end
       rescue KeyError
         raise PARError, "PAR response missing required fields"
@@ -158,8 +215,7 @@ module StandardSingpass
             client_id: T.must(@client_id),
             audience: T.must(@issuer),
             signing_key: T.must(@signing_key),
-            signing_kid: T.must(@signing_kid),
-            code: auth_code
+            signing_kid: T.must(@signing_kid)
           )
         }
 
@@ -362,13 +418,14 @@ module StandardSingpass
           data = JSON.parse(response.body)
           { access_token: data.fetch("access_token"), id_token: data["id_token"] }
         when 401, 403
-          raise AuthenticationError.new("Token exchange rejected (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
+          raise AuthenticationError.new("Token exchange rejected (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status, error_code: error_code(response))
         when 429
           raise RateLimitError, "Token endpoint rate limit exceeded"
         else
           raise ApiError.new(
             "Token exchange failed (HTTP #{response.status}): #{body_excerpt(response)}",
-            status: response.status
+            status: response.status,
+            error_code: error_code(response)
           )
         end
       rescue KeyError
@@ -383,13 +440,14 @@ module StandardSingpass
         when 200
           decrypt_and_validate_person(response.body, jwks_url:)
         when 401, 403
-          raise AuthenticationError.new("Person data request forbidden (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status)
+          raise AuthenticationError.new("Person data request forbidden (HTTP #{response.status}): #{body_excerpt(response)}", status: response.status, error_code: error_code(response))
         when 429
           raise RateLimitError, "Person endpoint rate limit exceeded"
         else
           raise ApiError.new(
             "Person data fetch failed (HTTP #{response.status}): #{body_excerpt(response)}",
-            status: response.status
+            status: response.status,
+            error_code: error_code(response)
           )
         end
       end
@@ -462,6 +520,23 @@ module StandardSingpass
       # PII alongside the OAuth fields, and we'd rather lose diagnostic detail
       # than leak PII into log streams.
       SAFE_ERROR_FIELDS = T.let(%w[error error_description trace_id id state].freeze, T::Array[String])
+
+      # OAuth error codes are lowercase snake_case tokens. Anything else in the
+      # `error` field is dropped rather than carried on the exception, for the
+      # same reason SAFE_ERROR_FIELDS exists: an unexpected value could be PII.
+      ERROR_CODE_FORMAT = T.let(/\A[a-z_]{1,64}\z/, Regexp)
+
+      # The OAuth `error` code from a Singpass error body, or nil when the
+      # body is not JSON, has no `error`, or carries something that is not a
+      # plain code. Surfaced as `Error#error_code`.
+      sig { params(response: Faraday::Response).returns(T.nilable(String)) }
+      def error_code(response)
+        parsed = JSON.parse(response.body.to_s)
+        code = parsed.is_a?(Hash) ? parsed["error"] : nil
+        code if code.is_a?(String) && code.match?(ERROR_CODE_FORMAT)
+      rescue JSON::ParserError
+        nil
+      end
 
       # Single-line excerpt of a Faraday response body for inclusion in error
       # messages. Parses JSON when possible and emits only the SAFE_ERROR_FIELDS

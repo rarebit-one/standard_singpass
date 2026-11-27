@@ -54,7 +54,10 @@ module StandardSingpass
         JWT.encode(claims, key_pair, "ES256", header)
       end
 
-      # Builds a private_key_jwt client assertion for the token endpoint.
+      # Builds a private_key_jwt client assertion for the PAR and token
+      # endpoints. `code:` adds a `code` claim that Singpass's spec does not
+      # define; the client no longer passes it, and it is kept only so
+      # existing callers do not break.
       sig { params(client_id: String, audience: String, signing_key: T.any(String, OpenSSL::PKey::PKey), signing_kid: String, code: T.nilable(String)).returns(String) }
       def self.build_client_assertion(client_id:, audience:, signing_key:, signing_kid:, code: nil)
         key = signing_key.is_a?(OpenSSL::PKey::PKey) ? signing_key : OpenSSL::PKey.read(signing_key)

@@ -29,6 +29,12 @@ module StandardSingpass
       # the generic unavailable/gateway-timeout equivalents.
       # https://docs.developer.singpass.gov.sg/docs/products/singpass-myinfo/scheduled-downtimes
       #
+      # Caveat: Singpass also answers 502 `upstream_dependency_error` when it
+      # could not fetch the *host's* JWKS endpoint. The response does not say
+      # which, so this still classifies it as unavailable; hosts can watch
+      # `Error#error_code` on the PAR and token legs, where no agency is
+      # involved, to spot their own JWKS being the cause.
+      #
       # `Client::RETRYABLE_USERINFO_STATUSES` is an alias of this list: the
       # statuses worth one more automatic attempt are exactly the statuses
       # that mean "their side, transient".
